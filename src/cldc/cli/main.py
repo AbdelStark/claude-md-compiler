@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 
 from cldc.compiler.policy_compiler import compile_repo_policy, doctor_repo_policy
+from cldc.runtime.evaluator import check_repo_policy
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -19,6 +20,13 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_parser = subparsers.add_parser("doctor", help="Inspect policy discovery and validation state")
     doctor_parser.add_argument("repo", nargs="?", default=".", help="Repo root or any path inside the repo")
     doctor_parser.add_argument("--json", action="store_true", dest="json_output")
+
+    check_parser = subparsers.add_parser("check", help="Evaluate runtime activity against the compiled policy")
+    check_parser.add_argument("repo", nargs="?", default=".", help="Repo root or any path inside the repo")
+    check_parser.add_argument("--read", action="append", default=[], dest="read_paths", help="Path read before editing; repeat for multiple paths")
+    check_parser.add_argument("--write", action="append", default=[], dest="write_paths", help="Path written or otherwise touched; repeat for multiple paths")
+    check_parser.add_argument("--command", action="append", default=[], dest="commands", help="Executed command string; repeat for multiple commands")
+    check_parser.add_argument("--json", action="store_true", dest="json_output")
     return parser
 
 
@@ -69,6 +77,31 @@ def _print_doctor_result(report, json_output: bool) -> None:
         print(f"Recommended next action: {report.next_action}")
 
 
+def _print_check_result(report, json_output: bool) -> None:
+    if json_output:
+        print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
+        return
+
+    print(f"Policy check: {report.decision}")
+    print(f"Repo root: {report.repo_root}")
+    print(f"Default mode: {report.default_mode}")
+    print(
+        f"Inputs: reads={len(report.inputs['read_paths'])}, writes={len(report.inputs['write_paths'])}, "
+        f"commands={len(report.inputs['commands'])}"
+    )
+    print(
+        f"Violations: {report.violation_count} total ({report.blocking_violation_count} blocking)"
+    )
+    for violation in report.violations:
+        print(f"- [{violation.mode}] {violation.rule_id} ({violation.kind}): {violation.message}")
+        if violation.matched_paths:
+            print(f"  matched paths: {', '.join(violation.matched_paths)}")
+        if violation.required_paths:
+            print(f"  required reads: {', '.join(violation.required_paths)}")
+        if violation.required_commands:
+            print(f"  required commands: {', '.join(violation.required_commands)}")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -82,6 +115,15 @@ def main(argv: list[str] | None = None) -> int:
             report = doctor_repo_policy(Path(args.repo))
             _print_doctor_result(report, args.json_output)
             return 1 if report.errors else 0
+        if args.command == "check":
+            report = check_repo_policy(
+                Path(args.repo),
+                read_paths=args.read_paths,
+                write_paths=args.write_paths,
+                commands=args.commands,
+            )
+            _print_check_result(report, args.json_output)
+            return 2 if report.blocking_violation_count else 0
     except Exception as exc:
         if getattr(args, "json_output", False):
             print(

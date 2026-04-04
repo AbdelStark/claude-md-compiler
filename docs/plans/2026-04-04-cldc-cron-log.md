@@ -40,3 +40,23 @@
   - Core runtime enforcement (`cldc check`) remains the biggest MVP gap, but the artifacts and diagnostics around it are more trustworthy.
 - **Next highest-leverage task**
   - Implement `cldc check` MVP: load `.claude/policy.lock.json`, accept touched-path / executed-command inputs, evaluate `deny_write`, `require_read`, and `require_command`, and emit machine-readable violations with mode-aware exit codes.
+
+## Iteration 3 — SHIPPING FEATURES
+- **What changed**
+  - Shipped an MVP `cldc check` command that loads the compiled lockfile and evaluates runtime evidence from `--read`, `--write`, and `--command` inputs.
+  - Added the first runtime evaluator under `src/cldc/runtime/` with deterministic handling for `deny_write`, `require_read`, and `require_command` rules plus structured violation objects.
+  - Implemented mode-aware enforcement decisions so `warn`/`observe` violations stay non-blocking while `block`/`fix` violations return exit code `2` for CI and automation.
+  - Added stable JSON and human-readable check output including matched paths, required reads/commands, rule provenance, and aggregate decision metadata.
+  - Updated the fixture policy and README so the repo now demonstrates both warning-level guidance and a true blocking rule.
+- **Verification run**
+  - `python -m pytest -q` → `27 passed`
+  - `PYTHONPATH=src python -m cldc.cli.main check tests/fixtures/repo_a --write src/main.py --json` → success, returns two warning-level violations (`must-read-rfc`, `run-tests`)
+  - `PYTHONPATH=src python -m cldc.cli.main check tests/fixtures/repo_a --write generated/output.json --json` → exit code `2`, returns one blocking violation (`generated-lock`)
+- **Current state of project**
+  - The repo now has an end-to-end compile → check enforcement loop instead of only artifact generation and diagnostics.
+  - Operators and CI can feed explicit runtime evidence into `cldc check` and get deterministic machine-readable violations with rule-level provenance.
+  - The shippable MVP now covers the three core rule kinds most directly tied to repo safety and workflow enforcement.
+  - A repo-local `venv/` is not present here, so verification used the available Python 3.11 interpreter directly rather than `source venv/bin/activate`.
+  - Commit shipped on `main` with message `feat: add runtime policy check command`.
+- **Next highest-leverage task**
+  - Expand runtime inputs beyond explicit CLI flags by adding stdin/JSON event ingestion (or a CI-focused wrapper command) so real agent transcripts and automation can feed `cldc check` without manual argument repetition.
