@@ -35,7 +35,16 @@ def test_compile_repo_policy_writes_lockfile(tmp_path):
         'run-tests',
     ]
     assert compiled.lockfile_path == '.claude/policy.lock.json'
+    assert compiled.default_mode == 'warn'
     assert compiled.source_count == 4
+    assert compiled.source_paths == [
+        'CLAUDE.md',
+        'CLAUDE.md',
+        '.claude-compiler.yaml',
+        'policies/commands.yml',
+    ]
+    assert any('compiled lockfile not found' in warning for warning in compiled.warnings)
+    assert compiled.discovery['repo_root'] == str(target.resolve())
 
 
 def test_compile_repo_policy_discovers_repo_root_from_nested_path(tmp_path):

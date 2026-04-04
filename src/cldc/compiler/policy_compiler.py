@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 import json
+from json import JSONDecodeError
 from pathlib import Path
 from typing import Any
 
@@ -19,8 +20,12 @@ class CompiledPolicy:
     lockfile_path: str
     compiler_version: str
     format_version: str
+    default_mode: str
     rule_count: int
     source_count: int
+    source_paths: list[str]
+    warnings: list[str]
+    discovery: dict[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -35,8 +40,11 @@ class DoctorReport:
     default_mode: str | None
     lockfile_path: str
     lockfile_exists: bool
+    lockfile_schema: str | None
+    lockfile_format_version: str | None
     warnings: list[str]
     errors: list[str]
+    next_action: str | None
     discovery: dict[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
@@ -75,9 +83,72 @@ def compile_repo_policy(repo_root: Path | str) -> CompiledPolicy:
         lockfile_path=".claude/policy.lock.json",
         compiler_version=__version__,
         format_version=LOCKFILE_FORMAT_VERSION,
+        default_mode=parsed.default_mode,
         rule_count=len(parsed.rules),
         source_count=len(bundle.sources),
+        source_paths=[source.path for source in bundle.sources],
+        warnings=list(bundle.discovery.warnings),
+        discovery=bundle.discovery.to_dict(),
     )
+
+
+def _safe_resolve(path: Path | str) -> str:
+    try:
+        return str(Path(path).resolve())
+    except FileNotFoundError:
+        return str(Path(path).absolute())
+
+
+def _validate_existing_lockfile(
+    lockfile: Path,
+    *,
+    repo_root: Path,
+    expected_rule_count: int,
+    errors: list[str],
+    warnings: list[str],
+) -> tuple[str | None, str | None]:
+    try:
+        payload = json.loads(lockfile.read_text())
+    except JSONDecodeError as exc:
+        errors.append(f"lockfile is not valid JSON: {exc}")
+        return None, None
+
+    if not isinstance(payload, dict):
+        errors.append("lockfile must contain a JSON object at the top level")
+        return None, None
+
+    lockfile_schema = payload.get("$schema")
+    lockfile_format_version = payload.get("format_version")
+
+    if lockfile_schema != LOCKFILE_SCHEMA:
+        warnings.append(
+            "lockfile schema does not match compiler expectation; re-run `cldc compile` to refresh it"
+        )
+    if lockfile_format_version != LOCKFILE_FORMAT_VERSION:
+        warnings.append(
+            "lockfile format_version does not match compiler expectation; re-run `cldc compile` to refresh it"
+        )
+    if payload.get("repo_root") != str(repo_root):
+        warnings.append("lockfile repo_root does not match the discovered repository root")
+    if payload.get("rule_count") != expected_rule_count:
+        warnings.append("lockfile rule_count does not match the currently parsed policy sources")
+
+    return (
+        lockfile_schema if isinstance(lockfile_schema, str) else None,
+        lockfile_format_version if isinstance(lockfile_format_version, str) else None,
+    )
+
+
+def _recommend_next_action(errors: list[str], warnings: list[str]) -> str | None:
+    if errors:
+        return "Fix the reported policy or lockfile errors, then rerun `cldc doctor` and `cldc compile`."
+    if any("stale" in warning or "does not match" in warning for warning in warnings):
+        return "Re-run `cldc compile` to refresh the lockfile, then commit the updated artifact."
+    if any("compiled lockfile not found" in warning for warning in warnings):
+        return "Run `cldc compile` to generate the initial lockfile artifact."
+    if any("no policy fragments" in warning for warning in warnings):
+        return "Add policy fragments under `policies/` or inline `cldc` blocks to increase enforcement coverage."
+    return None
 
 
 def doctor_repo_policy(repo_root: Path | str) -> DoctorReport:
@@ -87,35 +158,45 @@ def doctor_repo_policy(repo_root: Path | str) -> DoctorReport:
     try:
         bundle = load_policy_sources(repo_root)
     except FileNotFoundError as exc:
+        errors = [str(exc)]
         return DoctorReport(
-            repo_root=str(Path(repo_root).resolve()),
+            repo_root=_safe_resolve(repo_root),
             discovered=False,
             source_count=0,
             rule_count=0,
             default_mode=None,
             lockfile_path=".claude/policy.lock.json",
             lockfile_exists=False,
+            lockfile_schema=None,
+            lockfile_format_version=None,
             warnings=[],
-            errors=[str(exc)],
+            errors=errors,
+            next_action=_recommend_next_action(errors, []),
             discovery={},
         )
     except Exception as exc:
+        errors = [str(exc)]
         return DoctorReport(
-            repo_root=str(Path(repo_root).resolve()),
+            repo_root=_safe_resolve(repo_root),
             discovered=False,
             source_count=0,
             rule_count=0,
             default_mode=None,
             lockfile_path=".claude/policy.lock.json",
             lockfile_exists=False,
+            lockfile_schema=None,
+            lockfile_format_version=None,
             warnings=[],
-            errors=[str(exc)],
+            errors=errors,
+            next_action=_recommend_next_action(errors, []),
             discovery={},
         )
 
     warnings.extend(bundle.discovery.warnings)
     root = Path(bundle.repo_root)
     lockfile = root / ".claude" / "policy.lock.json"
+    lockfile_schema: str | None = None
+    lockfile_format_version: str | None = None
 
     try:
         parsed = parse_rule_documents(bundle)
@@ -125,6 +206,15 @@ def doctor_repo_policy(repo_root: Path | str) -> DoctorReport:
         errors.append(str(exc))
         default_mode = None
         rule_count = 0
+    else:
+        if lockfile.exists():
+            lockfile_schema, lockfile_format_version = _validate_existing_lockfile(
+                lockfile,
+                repo_root=root,
+                expected_rule_count=rule_count,
+                errors=errors,
+                warnings=warnings,
+            )
 
     if not bundle.sources:
         warnings.append("no sources were loaded")
@@ -133,6 +223,7 @@ def doctor_repo_policy(repo_root: Path | str) -> DoctorReport:
         if lockfile.stat().st_mtime < newest_source_mtime:
             warnings.append("lockfile appears stale relative to policy sources")
 
+    next_action = _recommend_next_action(errors, warnings)
     return DoctorReport(
         repo_root=str(root),
         discovered=True,
@@ -141,7 +232,10 @@ def doctor_repo_policy(repo_root: Path | str) -> DoctorReport:
         default_mode=default_mode,
         lockfile_path=".claude/policy.lock.json",
         lockfile_exists=lockfile.exists(),
+        lockfile_schema=lockfile_schema,
+        lockfile_format_version=lockfile_format_version,
         warnings=warnings,
         errors=errors,
+        next_action=next_action,
         discovery=bundle.discovery.to_dict(),
     )

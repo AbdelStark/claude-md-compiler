@@ -63,6 +63,29 @@ def test_cli_returns_nonzero_and_actionable_error_on_bad_input(tmp_path):
     assert 'compile failed' in result.stderr.lower()
 
 
+
+def test_cli_returns_json_error_payload_on_bad_input(tmp_path):
+    (tmp_path / 'CLAUDE.md').write_text(
+        "```cldc\nrules:\n  - id: broken\n    message: missing kind\n```\n"
+    )
+
+    result = subprocess.run(
+        [sys.executable, '-m', 'cldc.cli.main', 'compile', str(tmp_path), '--json'],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={'PYTHONPATH': str(Path(__file__).resolve().parents[1] / 'src')},
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stderr)
+    assert payload == {
+        'command': 'compile',
+        'error': "rule 'broken' kind is required",
+        'ok': False,
+    }
+
+
 def test_compiler_emits_lockfile_schema_version(tmp_path):
     (tmp_path / 'CLAUDE.md').write_text(
         "```cldc\nrules:\n  - id: deny\n    kind: deny_write\n    paths: ['generated/**']\n    message: stop\n```\n"
@@ -91,3 +114,43 @@ def test_doctor_flags_stale_lockfile(tmp_path):
 
     assert report.errors == []
     assert any('stale' in warning for warning in report.warnings)
+    assert report.next_action == 'Re-run `cldc compile` to refresh the lockfile, then commit the updated artifact.'
+
+
+
+def test_doctor_reports_lockfile_schema_drift(tmp_path):
+    (tmp_path / 'CLAUDE.md').write_text(
+        "```cldc\nrules:\n  - id: deny\n    kind: deny_write\n    paths: ['generated/**']\n    message: stop\n```\n"
+    )
+    compile_repo_policy(tmp_path)
+    lockfile = tmp_path / '.claude' / 'policy.lock.json'
+    payload = json.loads(lockfile.read_text())
+    payload['$schema'] = 'https://cldc.dev/schemas/policy-lock/v0'
+    payload['format_version'] = '0'
+    payload['rule_count'] = 999
+    lockfile.write_text(json.dumps(payload))
+
+    report = doctor_repo_policy(tmp_path)
+
+    assert report.errors == []
+    assert report.lockfile_schema == 'https://cldc.dev/schemas/policy-lock/v0'
+    assert report.lockfile_format_version == '0'
+    assert any('schema does not match' in warning for warning in report.warnings)
+    assert any('format_version does not match' in warning for warning in report.warnings)
+    assert any('rule_count does not match' in warning for warning in report.warnings)
+    assert report.next_action == 'Re-run `cldc compile` to refresh the lockfile, then commit the updated artifact.'
+
+
+
+def test_doctor_reports_malformed_lockfile_json(tmp_path):
+    (tmp_path / 'CLAUDE.md').write_text(
+        "```cldc\nrules:\n  - id: deny\n    kind: deny_write\n    paths: ['generated/**']\n    message: stop\n```\n"
+    )
+    compile_repo_policy(tmp_path)
+    lockfile = tmp_path / '.claude' / 'policy.lock.json'
+    lockfile.write_text('{not json}\n')
+
+    report = doctor_repo_policy(tmp_path)
+
+    assert any('not valid JSON' in error for error in report.errors)
+    assert report.next_action == 'Fix the reported policy or lockfile errors, then rerun `cldc doctor` and `cldc compile`.'

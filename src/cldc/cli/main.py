@@ -30,6 +30,11 @@ def _print_compile_result(compiled, json_output: bool) -> None:
         f"Compiled {compiled.rule_count} rules from {compiled.source_count} sources into "
         f"{compiled.lockfile_path} for {compiled.repo_root}"
     )
+    print(f"Default mode: {compiled.default_mode}")
+    if compiled.warnings:
+        print("Discovery warnings:")
+        for warning in compiled.warnings:
+            print(f"- {warning}")
 
 
 def _print_doctor_result(report, json_output: bool) -> None:
@@ -46,6 +51,12 @@ def _print_doctor_result(report, json_output: bool) -> None:
     print(
         f"Lockfile: {report.lockfile_path} ({'present' if report.lockfile_exists else 'missing'})"
     )
+    if report.lockfile_schema or report.lockfile_format_version:
+        print(
+            "Lockfile metadata: "
+            f"schema={report.lockfile_schema or 'unknown'}, "
+            f"format_version={report.lockfile_format_version or 'unknown'}"
+        )
     if report.warnings:
         print("Warnings:")
         for warning in report.warnings:
@@ -54,6 +65,8 @@ def _print_doctor_result(report, json_output: bool) -> None:
         print("Errors:")
         for error in report.errors:
             print(f"- {error}")
+    if report.next_action:
+        print(f"Recommended next action: {report.next_action}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -70,7 +83,21 @@ def main(argv: list[str] | None = None) -> int:
             _print_doctor_result(report, args.json_output)
             return 1 if report.errors else 0
     except Exception as exc:
-        print(f"{args.command} failed: {exc}", file=sys.stderr)
+        if getattr(args, "json_output", False):
+            print(
+                json.dumps(
+                    {
+                        "command": args.command,
+                        "ok": False,
+                        "error": str(exc),
+                    },
+                    indent=2,
+                    sort_keys=True,
+                ),
+                file=sys.stderr,
+            )
+        else:
+            print(f"{args.command} failed: {exc}", file=sys.stderr)
         return 1
 
     parser.error(f"unknown command: {args.command}")
