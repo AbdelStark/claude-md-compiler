@@ -1,0 +1,7 @@
+
+rules:
+  - id: run-tests
+    kind: require_command
+    commands: ["pytest -q"]
+    when_paths: ["src/**", "tests/**"]
+    message: Run tests before finishing.

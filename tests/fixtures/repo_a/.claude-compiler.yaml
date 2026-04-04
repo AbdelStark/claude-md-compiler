@@ -1,0 +1,11 @@
+default_mode: warn
+include:
+  - policies/*.yml
+rules:
+  - id: must-read-rfc
+    kind: require_read
+    before_paths:
+      - docs/rfcs/**
+    paths:
+      - src/**
+    message: Read the RFCs before touching source.
