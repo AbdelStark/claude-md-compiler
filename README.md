@@ -13,4 +13,4 @@ This is a private spec-first repo. It exists to turn a sharp product idea into a
 - `docs/rfcs/` — implementation contracts
 
 ## Current status
-Spec phase. No code yet. The immediate goal is to pressure-test product shape, architecture, and sequencing before implementation starts.
+Early implementation phase. The repo now ships a working `cldc` CLI with `compile` and `doctor` commands, canonical source discovery from nested paths, deterministic lockfile generation, and validation tests for source loading and rule parsing.

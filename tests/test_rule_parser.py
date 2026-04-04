@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from cldc.ingest.source_loader import load_policy_sources
 from cldc.parser.rule_parser import parse_rule_documents
 
@@ -23,17 +25,24 @@ def test_parse_rule_documents_merges_rules_from_all_sources():
 
 def test_parse_rule_documents_rejects_duplicate_rule_ids(tmp_path):
     (tmp_path / 'CLAUDE.md').write_text(
-        "```cldc\nrules:\n  - id: dup\n    kind: deny_write\n    paths: ['a/**']\n```\n"
+        "```cldc\nrules:\n  - id: dup\n    kind: deny_write\n    paths: ['a/**']\n    message: first\n```\n"
     )
     (tmp_path / '.claude-compiler.yaml').write_text(
-        "rules:\n  - id: dup\n    kind: deny_write\n    paths: ['b/**']\n"
+        "rules:\n  - id: dup\n    kind: deny_write\n    paths: ['b/**']\n    message: second\n"
     )
 
     bundle = load_policy_sources(tmp_path)
 
-    try:
+    with pytest.raises(ValueError, match='duplicate rule id'):
         parse_rule_documents(bundle)
-    except ValueError as exc:
-        assert 'duplicate rule id' in str(exc).lower()
-    else:
-        raise AssertionError('expected duplicate rule id to raise')
+
+
+def test_parse_rule_documents_rejects_missing_kind_specific_fields(tmp_path):
+    (tmp_path / 'CLAUDE.md').write_text(
+        "```cldc\nrules:\n  - id: read-rfc\n    kind: require_read\n    paths: ['src/**']\n    message: read first\n```\n"
+    )
+
+    bundle = load_policy_sources(tmp_path)
+
+    with pytest.raises(ValueError, match="requires field 'before_paths'"):
+        parse_rule_documents(bundle)

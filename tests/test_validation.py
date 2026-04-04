@@ -1,10 +1,12 @@
 from pathlib import Path
+import json
+import os
 import subprocess
 import sys
 
 import pytest
 
-from cldc.compiler.policy_compiler import compile_repo_policy
+from cldc.compiler.policy_compiler import compile_repo_policy, doctor_repo_policy
 from cldc.ingest.source_loader import load_policy_sources
 from cldc.parser.rule_parser import parse_rule_documents
 
@@ -67,5 +69,25 @@ def test_compiler_emits_lockfile_schema_version(tmp_path):
     )
 
     compiled = compile_repo_policy(tmp_path)
+    payload = json.loads((tmp_path / '.claude' / 'policy.lock.json').read_text())
 
     assert compiled.format_version == '1'
+    assert payload['$schema'] == 'https://cldc.dev/schemas/policy-lock/v1'
+
+
+def test_doctor_flags_stale_lockfile(tmp_path):
+    (tmp_path / 'CLAUDE.md').write_text(
+        "```cldc\nrules:\n  - id: deny\n    kind: deny_write\n    paths: ['generated/**']\n    message: stop\n```\n"
+    )
+    compile_repo_policy(tmp_path)
+    claude_path = tmp_path / 'CLAUDE.md'
+    (tmp_path / 'CLAUDE.md').write_text(
+        "```cldc\nrules:\n  - id: deny\n    kind: deny_write\n    paths: ['generated/**']\n    message: changed\n```\n"
+    )
+    lockfile_mtime = (tmp_path / '.claude' / 'policy.lock.json').stat().st_mtime
+    os.utime(claude_path, (lockfile_mtime + 5, lockfile_mtime + 5))
+
+    report = doctor_repo_policy(tmp_path)
+
+    assert report.errors == []
+    assert any('stale' in warning for warning in report.warnings)

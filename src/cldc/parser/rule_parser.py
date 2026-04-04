@@ -9,6 +9,12 @@ from cldc.ingest.source_loader import SourceBundle
 
 ALLOWED_RULE_KINDS = {"require_read", "deny_write", "require_command", "couple_change"}
 ALLOWED_MODES = {"observe", "warn", "block", "fix"}
+REQUIRED_FIELDS_BY_KIND = {
+    "deny_write": ("paths",),
+    "require_read": ("paths", "before_paths"),
+    "require_command": ("commands", "when_paths"),
+    "couple_change": ("paths", "when_paths"),
+}
 
 
 @dataclass(frozen=True)
@@ -45,9 +51,21 @@ def _optional_str_list(item: dict[str, Any], key: str) -> list[str] | None:
     value = item.get(key)
     if value is None:
         return None
-    if not isinstance(value, list) or any(not isinstance(v, str) for v in value):
-        raise ValueError(f"rule field '{key}' must be a list of strings")
+    if not isinstance(value, list) or any(not isinstance(v, str) or not v.strip() for v in value):
+        raise ValueError(f"rule field '{key}' must be a list of non-empty strings")
     return value
+
+
+def _load_yaml_document(raw: str, context: str) -> dict[str, Any]:
+    try:
+        document = yaml.safe_load(raw)
+    except yaml.YAMLError as exc:
+        raise ValueError(f"invalid yaml in {context}: {exc}") from exc
+    if document is None:
+        return {}
+    if not isinstance(document, dict):
+        raise ValueError(f"expected a YAML mapping in {context}")
+    return document
 
 
 def _validate_rule_item(item: dict[str, Any]) -> None:
@@ -61,19 +79,25 @@ def _validate_rule_item(item: dict[str, Any]) -> None:
         raise ValueError(f"unknown rule kind: {item['kind']}")
     if item.get("mode") is not None and item["mode"] not in ALLOWED_MODES:
         raise ValueError(f"invalid rule mode: {item['mode']}")
-    if item.get("message") is not None and not isinstance(item["message"], str):
-        raise ValueError("rule message must be a string")
-    _optional_str_list(item, "paths")
-    _optional_str_list(item, "before_paths")
-    _optional_str_list(item, "when_paths")
-    _optional_str_list(item, "commands")
+    if not isinstance(item.get("message"), str) or not item["message"].strip():
+        raise ValueError(f"rule '{item['id']}' message is required")
+
+    fields = {
+        "paths": _optional_str_list(item, "paths"),
+        "before_paths": _optional_str_list(item, "before_paths"),
+        "when_paths": _optional_str_list(item, "when_paths"),
+        "commands": _optional_str_list(item, "commands"),
+    }
+    for field_name in REQUIRED_FIELDS_BY_KIND[item["kind"]]:
+        if not fields[field_name]:
+            raise ValueError(f"rule '{item['id']}' requires field '{field_name}'")
 
 
-def _coerce_rules(source, raw) -> list[RuleDefinition]:
-    document = yaml.safe_load(raw) or {}
+def _coerce_rules(source, raw: str) -> list[RuleDefinition]:
+    document = _load_yaml_document(raw, source.path)
     rule_items = document.get("rules", [])
     if not isinstance(rule_items, list):
-        raise ValueError("rules must be a list")
+        raise ValueError(f"rules must be a list in {source.path}")
     rules = []
     for item in rule_items:
         _validate_rule_item(item)
@@ -81,7 +105,7 @@ def _coerce_rules(source, raw) -> list[RuleDefinition]:
             RuleDefinition(
                 rule_id=item["id"],
                 kind=item["kind"],
-                message=item.get("message", ""),
+                message=item["message"],
                 mode=item.get("mode"),
                 paths=item.get("paths"),
                 before_paths=item.get("before_paths"),
@@ -102,7 +126,7 @@ def parse_rule_documents(bundle: SourceBundle) -> ParsedPolicy:
     for source in bundle.sources:
         if source.kind == "claude_md":
             continue
-        document = yaml.safe_load(source.content) or {}
+        document = _load_yaml_document(source.content, source.path)
         if source.kind == "compiler_config" and document.get("default_mode") is not None:
             if document["default_mode"] not in ALLOWED_MODES:
                 raise ValueError(f"invalid default_mode: {document['default_mode']}")

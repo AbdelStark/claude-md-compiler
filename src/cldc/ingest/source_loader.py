@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from pathlib import Path
 import re
 from typing import Any
 
+from pathlib import Path
+
 import yaml
+
+from cldc.ingest.discovery import DEFAULT_POLICY_GLOBS, DiscoveryResult, discover_policy_repo
+
+SOURCE_PRECEDENCE = ["claude_md", "inline_block", "compiler_config", "policy_file"]
 
 
 @dataclass(frozen=True)
@@ -24,10 +29,12 @@ class PolicySource:
 class SourceBundle:
     repo_root: str
     sources: list[PolicySource]
+    discovery: DiscoveryResult
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "repo_root": self.repo_root,
+            "discovery": self.discovery.to_dict(),
             "sources": [source.to_dict() for source in self.sources],
         }
 
@@ -49,8 +56,20 @@ def _extract_inline_blocks(claude_path: Path, text: str) -> list[PolicySource]:
     return sources
 
 
-def _load_include_patterns(config_text: str) -> list[str]:
-    config_data = yaml.safe_load(config_text) or {}
+def _load_yaml_document(raw: str, context: str) -> dict[str, Any]:
+    try:
+        document = yaml.safe_load(raw)
+    except yaml.YAMLError as exc:
+        raise ValueError(f"invalid yaml in {context}: {exc}") from exc
+    if document is None:
+        return {}
+    if not isinstance(document, dict):
+        raise ValueError(f"expected a YAML mapping in {context}")
+    return document
+
+
+def _load_include_patterns(config_text: str, context: str) -> list[str]:
+    config_data = _load_yaml_document(config_text, context)
     include = config_data.get("include", [])
     if include is None:
         return []
@@ -60,26 +79,25 @@ def _load_include_patterns(config_text: str) -> list[str]:
 
 
 def load_policy_sources(repo_root: Path | str) -> SourceBundle:
-    root = Path(repo_root)
-    if not root.exists():
-        raise FileNotFoundError(root)
+    discovery = discover_policy_repo(repo_root)
+    if not discovery.discovered:
+        raise FileNotFoundError(discovery.warnings[0])
 
+    root = Path(discovery.repo_root)
     sources: list[PolicySource] = []
 
-    claude_path = root / "CLAUDE.md"
-    if claude_path.exists():
+    if discovery.claude_path:
+        claude_path = root / discovery.claude_path
         claude_text = claude_path.read_text()
-        sources.append(PolicySource(kind="claude_md", path="CLAUDE.md", content=claude_text))
+        sources.append(PolicySource(kind="claude_md", path=discovery.claude_path, content=claude_text))
         sources.extend(_extract_inline_blocks(claude_path, claude_text))
 
-    include_patterns = ["policies/*.yml", "policies/*.yaml"]
-    config_path = root / ".claude-compiler.yaml"
-    if config_path.exists():
+    include_patterns = list(DEFAULT_POLICY_GLOBS)
+    if discovery.config_path:
+        config_path = root / discovery.config_path
         config_text = config_path.read_text()
-        sources.append(
-            PolicySource(kind="compiler_config", path=".claude-compiler.yaml", content=config_text)
-        )
-        include_patterns.extend(_load_include_patterns(config_text))
+        sources.append(PolicySource(kind="compiler_config", path=discovery.config_path, content=config_text))
+        include_patterns.extend(_load_include_patterns(config_text, discovery.config_path))
 
     seen_policy_paths: set[str] = set()
     for pattern_name in sorted(set(include_patterns)):
@@ -93,4 +111,4 @@ def load_policy_sources(repo_root: Path | str) -> SourceBundle:
                     PolicySource(kind="policy_file", path=rel, content=policy_path.read_text())
                 )
 
-    return SourceBundle(repo_root=str(root), sources=sources)
+    return SourceBundle(repo_root=str(root), sources=sources, discovery=discovery)
