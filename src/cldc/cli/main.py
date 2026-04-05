@@ -8,6 +8,7 @@ import sys
 from cldc import __version__
 from cldc.compiler.policy_compiler import compile_repo_policy, doctor_repo_policy
 from cldc.runtime.evaluator import check_repo_policy
+from cldc.runtime.events import EMPTY_EXECUTION_INPUTS, load_execution_inputs_file, load_execution_inputs_text
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -46,6 +47,8 @@ def build_parser() -> argparse.ArgumentParser:
     check_parser.add_argument("--read", action="append", default=[], dest="read_paths", help="Path read before editing; repeat for multiple paths")
     check_parser.add_argument("--write", action="append", default=[], dest="write_paths", help="Path written or otherwise touched; repeat for multiple paths")
     check_parser.add_argument("--command", action="append", default=[], dest="commands", help="Executed command string; repeat for multiple commands")
+    check_parser.add_argument("--events-file", dest="events_file", help="Load execution input JSON from a file and merge it with explicit --read/--write/--command flags")
+    check_parser.add_argument("--stdin-json", action="store_true", dest="stdin_json", help="Load execution input JSON from stdin and merge it with explicit --read/--write/--command flags")
     check_parser.add_argument("--json", action="store_true", dest="json_output", help="Emit machine-readable JSON output")
     return parser
 
@@ -107,7 +110,7 @@ def _print_check_result(report, json_output: bool) -> None:
     print(f"Default mode: {report.default_mode}")
     print(
         f"Inputs: reads={len(report.inputs['read_paths'])}, writes={len(report.inputs['write_paths'])}, "
-        f"commands={len(report.inputs['commands'])}"
+        f"commands={len(report.inputs['commands'])}, claims={len(report.inputs.get('claims', []))}"
     )
     print(
         f"Violations: {report.violation_count} total ({report.blocking_violation_count} blocking)"
@@ -120,6 +123,25 @@ def _print_check_result(report, json_output: bool) -> None:
             print(f"  required reads: {', '.join(violation.required_paths)}")
         if violation.required_commands:
             print(f"  required commands: {', '.join(violation.required_commands)}")
+
+
+def _load_cli_event_payload(args) -> dict[str, list[str]] | None:
+    merged = EMPTY_EXECUTION_INPUTS
+
+    if getattr(args, 'events_file', None):
+        merged = merged.merged_with(load_execution_inputs_file(args.events_file))
+    if getattr(args, 'stdin_json', False):
+        merged = merged.merged_with(load_execution_inputs_text(sys.stdin.read(), source='stdin'))
+
+    if merged == EMPTY_EXECUTION_INPUTS:
+        return None
+    return {
+        'read_paths': merged.read_paths,
+        'write_paths': merged.write_paths,
+        'commands': merged.commands,
+        'claims': merged.claims,
+    }
+
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -141,6 +163,7 @@ def main(argv: list[str] | None = None) -> int:
                 read_paths=args.read_paths,
                 write_paths=args.write_paths,
                 commands=args.commands,
+                event_payload=_load_cli_event_payload(args),
             )
             _print_check_result(report, args.json_output)
             return 2 if report.blocking_violation_count else 0

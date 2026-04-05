@@ -89,6 +89,84 @@ def test_cli_check_command_returns_json_violations(tmp_path):
     assert [violation['rule_id'] for violation in payload['violations']] == ['must-read-rfc', 'run-tests']
 
 
+def test_cli_check_command_accepts_events_file_json(tmp_path):
+    target = tmp_path / 'repo'
+    _copy_fixture_repo(target)
+    events_path = tmp_path / 'events.json'
+    events_path.write_text(
+        json.dumps(
+            {
+                'events': [
+                    {'kind': 'read', 'path': 'docs/rfcs/CLDC-0006-validator-engine.md'},
+                    {'kind': 'write', 'path': 'src/main.py'},
+                    {'kind': 'command', 'command': 'pytest -q'},
+                    {'kind': 'claim', 'claim': 'qa-reviewed'},
+                ]
+            }
+        )
+    )
+
+    compile_result = subprocess.run(
+        [sys.executable, '-m', 'cldc.cli.main', 'compile', str(target)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert compile_result.returncode == 0, compile_result.stderr
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            '-m', 'cldc.cli.main', 'check', str(target),
+            '--events-file', str(events_path),
+            '--json',
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload['decision'] == 'pass'
+    assert payload['inputs']['claims'] == ['qa-reviewed']
+
+
+def test_cli_check_command_accepts_stdin_json(tmp_path):
+    target = tmp_path / 'repo'
+    _copy_fixture_repo(target)
+
+    compile_result = subprocess.run(
+        [sys.executable, '-m', 'cldc.cli.main', 'compile', str(target)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert compile_result.returncode == 0, compile_result.stderr
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            '-m', 'cldc.cli.main', 'check', str(target),
+            '--stdin-json',
+            '--json',
+        ],
+        input=json.dumps({'write_paths': ['generated/output.json']}),
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+
+    assert result.returncode == 2, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload['decision'] == 'block'
+    assert payload['violations'][0]['rule_id'] == 'generated-lock'
+
+
 def test_cli_check_command_accepts_absolute_paths(tmp_path):
     target = tmp_path / 'repo'
     _copy_fixture_repo(target)
@@ -155,6 +233,41 @@ def test_cli_check_command_blocks_on_blocking_violations(tmp_path):
     assert payload['violations'][0]['rule_id'] == 'generated-lock'
 
 
+def test_cli_check_command_reports_json_errors_for_bad_event_payload(tmp_path):
+    target = tmp_path / 'repo'
+    _copy_fixture_repo(target)
+    bad_events = tmp_path / 'bad-events.json'
+    bad_events.write_text(json.dumps({'events': [{'kind': 'write'}]}))
+
+    compile_result = subprocess.run(
+        [sys.executable, '-m', 'cldc.cli.main', 'compile', str(target)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert compile_result.returncode == 0, compile_result.stderr
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            '-m', 'cldc.cli.main', 'check', str(target),
+            '--events-file', str(bad_events),
+            '--json',
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stderr)
+    assert payload['command'] == 'check'
+    assert 'requires a string' in payload['error']
+
+
+
 def test_cli_help_exposes_version_and_absolute_path_support():
     result = subprocess.run(
         [sys.executable, '-m', 'cldc.cli.main', 'check', '--help'],
@@ -166,6 +279,8 @@ def test_cli_help_exposes_version_and_absolute_path_support():
 
     assert result.returncode == 0
     assert 'repo-relative or absolute' in result.stdout
+    assert '--events-file' in result.stdout
+    assert '--stdin-json' in result.stdout
     assert 'discovered' in result.stdout
 
     version_result = subprocess.run(

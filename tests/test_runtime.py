@@ -6,6 +6,7 @@ import pytest
 
 from cldc.compiler.policy_compiler import compile_repo_policy
 from cldc.runtime.evaluator import check_repo_policy
+from cldc.runtime.events import load_execution_inputs
 
 
 @pytest.fixture
@@ -39,6 +40,7 @@ def test_check_repo_policy_reports_warn_only_violations(compiled_repo):
     assert require_read.required_paths == ['docs/rfcs/**']
     require_command = report.violations[1]
     assert require_command.required_commands == ['pytest -q']
+    assert report.inputs['claims'] == []
 
 
 def test_check_repo_policy_passes_when_required_inputs_are_present(compiled_repo):
@@ -54,6 +56,35 @@ def test_check_repo_policy_passes_when_required_inputs_are_present(compiled_repo
     assert report.violations == []
 
 
+def test_load_execution_inputs_supports_batch_events_and_claims():
+    payload = {
+        'events': [
+            {'kind': 'read', 'path': 'docs/rfcs/CLDC-0006-validator-engine.md'},
+            {'kind': 'write', 'path': 'src/main.py'},
+            {'kind': 'command', 'command': 'pytest -q'},
+            {'kind': 'claim', 'claim': 'task-complete'},
+        ]
+    }
+
+    inputs = load_execution_inputs(payload)
+
+    assert inputs.read_paths == ['docs/rfcs/CLDC-0006-validator-engine.md']
+    assert inputs.write_paths == ['src/main.py']
+    assert inputs.commands == ['pytest -q']
+    assert inputs.claims == ['task-complete']
+
+
+def test_load_execution_inputs_rejects_malformed_event_payloads():
+    with pytest.raises(ValueError, match='must be a JSON object'):
+        load_execution_inputs(['bad'])
+
+    with pytest.raises(ValueError, match="events\\[0\\] must contain a string 'kind'"):
+        load_execution_inputs({'events': [{}]})
+
+    with pytest.raises(ValueError, match="events\\[0\\] kind 'write' requires a string 'path'"):
+        load_execution_inputs({'events': [{'kind': 'write'}]})
+
+
 def test_check_repo_policy_normalizes_absolute_paths_inside_repo(compiled_repo):
     report = check_repo_policy(
         compiled_repo,
@@ -63,6 +94,24 @@ def test_check_repo_policy_normalizes_absolute_paths_inside_repo(compiled_repo):
     assert report.decision == 'warn'
     assert [violation.rule_id for violation in report.violations] == ['must-read-rfc', 'run-tests']
     assert report.inputs['write_paths'] == ['src/main.py']
+
+
+def test_check_repo_policy_merges_explicit_inputs_with_event_payload(compiled_repo):
+    report = check_repo_policy(
+        compiled_repo,
+        read_paths=['docs/rfcs/CLDC-0006-validator-engine.md'],
+        event_payload={
+            'events': [
+                {'kind': 'write', 'path': 'src/main.py'},
+                {'kind': 'command', 'command': 'pytest -q'},
+                {'kind': 'claim', 'claim': 'completed-runtime-check'},
+            ]
+        },
+    )
+
+    assert report.ok is True
+    assert report.decision == 'pass'
+    assert report.inputs['claims'] == ['completed-runtime-check']
 
 
 def test_check_repo_policy_rejects_paths_outside_repo(compiled_repo, tmp_path):

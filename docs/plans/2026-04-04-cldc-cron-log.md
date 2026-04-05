@@ -79,3 +79,23 @@
   - The repo now has 33 passing tests covering both happy-path enforcement and key failure modes around stale/drifted artifacts.
 - **Next highest-leverage task**
   - Add a CI-friendly event ingestion path for `cldc check` (stdin / JSON payloads or a wrapper command) so real agent transcripts and automation can feed evidence without repetitive flag expansion.
+
+## Iteration 5 — SHIPPING FEATURES
+- **What changed**
+  - Added a canonical runtime execution-input model in `src/cldc/runtime/events.py` that loads machine-readable JSON payloads from files or stdin, supports both top-level batch lists and per-event records, and validates malformed evidence with explicit errors.
+  - Extended `cldc check` with `--events-file` and `--stdin-json` so CI jobs and agent wrappers can feed read/write/command/claim evidence without repeating many CLI flags.
+  - Wired event payload merging into runtime evaluation so explicit flags and JSON evidence compose cleanly, with normalized `claims` now preserved in the machine-readable report for downstream automation.
+  - Updated human CLI output and README usage examples to document the new event-ingestion flow and payload shape.
+  - Expanded runtime + CLI coverage for event batches, stdin ingestion, file ingestion, malformed payload rejection, and merged explicit/event inputs.
+- **Verification run**
+  - `python -m pytest -q` → `39 passed`
+  - `python -m pip install -e .` → success
+  - `printf '%s' '{"events":[{"kind":"read","path":"docs/rfcs/CLDC-0006-validator-engine.md"},{"kind":"write","path":"src/main.py"},{"kind":"command","command":"pytest -q"},{"kind":"claim","claim":"qa-reviewed"}]}' | cldc check <tmp-repo> --stdin-json --json` → success, decision `pass`
+  - `cldc check <tmp-repo> --events-file <(printf '%s' '{"write_paths":["generated/output.json"]}') --json` → exit code `2`, blocking `generated-lock` violation
+- **Current state of project**
+  - The repo now has a real machine-readable ingestion path for runtime evidence, which closes the most obvious usability gap between the MVP checker and actual CI/agent workflows.
+  - `cldc check` can now evaluate explicit flags, stdin JSON, and file-based JSON in one run without losing deterministic normalization or stale-lockfile protections.
+  - Claims are not enforced yet, but they are now part of the canonical event payload/report contract so future explain/fix/CI flows have a stable place to hang completion assertions.
+  - Test coverage grew from 33 to 39 passing tests, with direct coverage of the new event schema and CLI ingestion modes.
+- **Next highest-leverage task**
+  - Ship the first dedicated `cldc ci` workflow that derives changed files from git (`--staged` and/or `--base`/`--head`) and feeds them into `cldc check`, turning the current policy engine into a one-command CI entrypoint.

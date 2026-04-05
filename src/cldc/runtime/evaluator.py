@@ -11,6 +11,7 @@ from cldc.compiler.policy_compiler import LOCKFILE_FORMAT_VERSION, LOCKFILE_SCHE
 from cldc.ingest.discovery import LOCKFILE_PATH, discover_policy_repo
 from cldc.ingest.source_loader import load_policy_sources
 from cldc.parser.rule_parser import parse_rule_documents
+from cldc.runtime.events import EMPTY_EXECUTION_INPUTS, load_execution_inputs
 
 BLOCKING_MODES = {"block", "fix"}
 NON_BLOCKING_MODES = {"observe", "warn"}
@@ -213,6 +214,7 @@ def _evaluate_rule(
     read_paths: list[str],
     write_paths: list[str],
     commands: list[str],
+    claims: list[str],
 ) -> Violation | None:
     kind = rule.get("kind")
     if kind not in ALLOWED_RULE_KINDS:
@@ -258,6 +260,7 @@ def check_repo_policy(
     read_paths: list[str] | None = None,
     write_paths: list[str] | None = None,
     commands: list[str] | None = None,
+    event_payload: dict[str, Any] | None = None,
 ) -> CheckReport:
     discovery = discover_policy_repo(repo_root)
     if not discovery.discovered:
@@ -267,9 +270,12 @@ def check_repo_policy(
     payload = _load_lockfile(root)
     _validate_lockfile_freshness(root, payload)
     default_mode = payload["default_mode"]
-    normalized_reads = _normalize_paths(read_paths, repo_root=root)
-    normalized_writes = _normalize_paths(write_paths, repo_root=root)
-    normalized_commands = _normalize_commands(commands)
+
+    event_inputs = load_execution_inputs(event_payload) if event_payload is not None else EMPTY_EXECUTION_INPUTS
+    normalized_reads = _normalize_paths([*(read_paths or []), *event_inputs.read_paths], repo_root=root)
+    normalized_writes = _normalize_paths([*(write_paths or []), *event_inputs.write_paths], repo_root=root)
+    normalized_commands = _normalize_commands([*(commands or []), *event_inputs.commands])
+    normalized_claims = _normalize_commands(event_inputs.claims)
 
     violations: list[Violation] = []
     for rule in payload["rules"]:
@@ -281,6 +287,7 @@ def check_repo_policy(
             read_paths=normalized_reads,
             write_paths=normalized_writes,
             commands=normalized_commands,
+            claims=normalized_claims,
         )
         if violation:
             violations.append(violation)
@@ -306,6 +313,7 @@ def check_repo_policy(
             "read_paths": normalized_reads,
             "write_paths": normalized_writes,
             "commands": normalized_commands,
+            "claims": normalized_claims,
         },
         violation_count=len(violations),
         blocking_violation_count=blocking_violation_count,
