@@ -204,3 +204,43 @@
   - The repo now has 51 passing tests plus green editable-install and wheel/sdist verification for the current CLI slice.
 - **Next highest-leverage task**
   - Ship the first `cldc fix` / remediation slice so blocking or warning reports can produce machine-readable fix suggestions or templated follow-up actions instead of stopping at explanation alone.
+
+## Iteration 11 — SHIPPING FEATURES
+- **What changed**
+  - Shipped the first `cldc fix` remediation-planning command so the CLI can now turn fresh runtime evidence or saved policy-report artifacts into deterministic follow-up guidance.
+  - Added `src/cldc/runtime/remediation.py` with a versioned fix-plan JSON contract, remediation synthesis for `deny_write` / `require_read` / `require_command`, and text/Markdown rendering for operator handoffs.
+  - Wired the new fix-plan flow into the CLI and runtime package exports while preserving the same input-mode split used by `cldc explain` (`--report-file` / `--stdin-report` versus fresh evidence flags).
+  - Expanded README coverage and regression tests for fix-plan JSON output, Markdown rendering from saved reports, and CLI discoverability/help text.
+- **Verification run**
+  - `python -m pytest -q` → `54 passed`
+  - `python -m pip install -e .` → success
+  - `python -m build` → success (sdist + wheel)
+  - `cldc fix <tmp-repo> --write src/main.py --json` → success, emits a versioned remediation plan with deterministic next steps and suggested commands
+- **Current state of project**
+  - The repo now has a full explain → remediate handoff instead of stopping at explanations, which makes the end-to-end workflow substantially closer to the product shape.
+  - Fix plans are advisory-only and deterministic, so automation can consume them safely without granting the CLI mutation powers yet.
+  - Packaging and install validation remained green while the CLI surface expanded to `compile`, `doctor`, `check`, `ci`, `explain`, and `fix`.
+  - Commit shipped on `main` with message `feat: add remediation planning command`.
+- **Next highest-leverage task**
+  - Harden release confidence around the new fix-plan slice: unify artifact versioning conventions, tighten CLI validation/error behavior, improve package metadata, and add install-path / no-remediation regression coverage.
+
+## Iteration 12 — QUALITY / POLISH / PRODUCTION-GRADE
+- **What changed**
+  - Standardized the new fix-plan artifact contract so `format_version` now uses the same string-based convention as the lockfile and policy-report artifacts, reducing schema drift across saved JSON outputs.
+  - Hardened remediation coverage with direct regressions for no-remediation `pass` reports, rendering already-versioned fix-plan payloads, and mixed-input CLI rejection for `cldc fix`.
+  - Improved packaging metadata in `pyproject.toml` with authorship, keywords, classifiers, SPDX license expression, and canonical GitHub project URLs to make built artifacts more release-ready.
+  - Updated the README install/release-validation guidance so operators verify the installed console script (`cldc --version`, `cldc fix --help`) and the core packaging path (`python -m build`) before shipping.
+- **Verification run**
+  - `python -m pytest -q` → `57 passed`
+  - `python -m pip install -e .` → success
+  - `python -m build` → success (sdist + wheel, no packaging deprecation warnings)
+  - `cldc --version` → success (`cldc 0.1.0`)
+  - `cldc fix --help` → success
+  - `cldc fix <tmp-repo> --write src/main.py --json` → success, emits `format_version="1"` and deterministic remediation guidance via the installed console script
+- **Current state of project**
+  - The fix-plan slice is now more spec-conformant and release-trustworthy because saved artifacts share one clearer versioning convention instead of mixing ints and strings.
+  - Packaging metadata is substantially cleaner for downstream users and registries, and build output no longer emits setuptools license deprecation warnings.
+  - The repo now has 57 passing tests covering both the new remediation happy paths and the key failure-mode guardrails around mixed CLI inputs.
+  - Commit shipped on `main` with message `fix: polish remediation packaging and contracts`.
+- **Next highest-leverage task**
+  - Push the last production-grade pass on docs/spec alignment: add a dedicated end-to-end saved-artifact workflow example (`check --json` → `explain` / `fix`) and tighten any remaining schema/backwards-compatibility edges before the final shipping iterations.

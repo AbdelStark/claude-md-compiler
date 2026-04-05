@@ -8,6 +8,7 @@ from cldc.compiler.policy_compiler import compile_repo_policy
 from cldc.runtime.evaluator import check_repo_policy
 from cldc.runtime.events import load_execution_inputs
 from cldc.runtime.git import collect_git_write_paths
+from cldc.runtime.remediation import FIX_PLAN_FORMAT_VERSION, FIX_PLAN_SCHEMA, build_fix_plan, render_fix_plan
 from cldc.runtime.report_schema import CHECK_REPORT_FORMAT_VERSION, CHECK_REPORT_SCHEMA
 
 
@@ -66,6 +67,62 @@ def test_check_repo_policy_passes_when_required_inputs_are_present(compiled_repo
     assert report.summary == 'Policy check passed with no violations.'
     assert report.next_action is None
     assert report.violations == []
+
+
+def test_build_fix_plan_emits_versioned_remediations_for_violations(compiled_repo):
+    report = check_repo_policy(compiled_repo, write_paths=['src/main.py'])
+
+    plan = build_fix_plan(report.to_dict())
+
+    assert plan['$schema'] == FIX_PLAN_SCHEMA
+    assert plan['format_version'] == FIX_PLAN_FORMAT_VERSION
+    assert plan['decision'] == 'warn'
+    assert plan['violation_count'] == 2
+    assert plan['remediation_count'] == 2
+    assert plan['summary'] == 'Generated 2 remediation plan item(s) for 2 violation(s) in a `warn` policy report.'
+    assert plan['next_action'] == (
+        'Read at least one required context path before keeping changes to src/main.py: docs/rfcs/**.'
+    )
+    first = plan['remediations'][0]
+    assert first['rule_id'] == 'must-read-rfc'
+    assert first['priority'] == 'non-blocking'
+    assert first['files_to_inspect'] == ['.claude-compiler.yaml', 'src/main.py', 'docs/rfcs/**']
+    assert first['suggested_commands'] == []
+    second = plan['remediations'][1]
+    assert second['rule_id'] == 'run-tests'
+    assert second['suggested_commands'] == ['pytest -q']
+    assert second['can_autofix'] is False
+
+
+def test_build_fix_plan_for_pass_report_has_no_remediations(compiled_repo):
+    report = check_repo_policy(
+        compiled_repo,
+        read_paths=['docs/rfcs/CLDC-0006-validator-engine.md'],
+        write_paths=['src/main.py'],
+        commands=['pytest -q'],
+    )
+
+    plan = build_fix_plan(report.to_dict())
+
+    assert plan['format_version'] == FIX_PLAN_FORMAT_VERSION
+    assert plan['decision'] == 'pass'
+    assert plan['remediation_count'] == 0
+    assert plan['remediations'] == []
+    assert plan['next_action'] is None
+    assert plan['summary'] == 'No remediation is required because the policy report has no violations.'
+
+
+
+def test_render_fix_plan_accepts_already_versioned_payload(compiled_repo):
+    report = check_repo_policy(compiled_repo, write_paths=['generated/output.json'])
+    plan = build_fix_plan(report.to_dict())
+
+    rendered = render_fix_plan(plan, format='text')
+
+    assert 'Policy fix plan: block' in rendered
+    assert 'Suggested commands' not in rendered
+    assert 'generated-lock' in rendered
+
 
 
 def test_load_execution_inputs_supports_batch_events_and_claims():

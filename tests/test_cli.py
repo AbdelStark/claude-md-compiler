@@ -3,6 +3,7 @@ from pathlib import Path
 import subprocess
 import sys
 
+from cldc.runtime.remediation import FIX_PLAN_FORMAT_VERSION, FIX_PLAN_SCHEMA
 from cldc.runtime.report_schema import CHECK_REPORT_FORMAT_VERSION, CHECK_REPORT_SCHEMA
 
 
@@ -616,6 +617,143 @@ def test_cli_explain_command_accepts_legacy_unversioned_saved_report(tmp_path):
     assert payload['violations'][0]['rule_id'] == 'generated-lock'
 
 
+def test_cli_fix_command_returns_versioned_json_plan(tmp_path):
+    target = tmp_path / 'repo'
+    _copy_fixture_repo(target)
+
+    compile_result = subprocess.run(
+        [sys.executable, '-m', 'cldc.cli.main', 'compile', str(target)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert compile_result.returncode == 0, compile_result.stderr
+
+    fix_result = subprocess.run(
+        [
+            sys.executable,
+            '-m', 'cldc.cli.main', 'fix', str(target),
+            '--write', 'src/main.py',
+            '--json',
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+
+    assert fix_result.returncode == 0, fix_result.stderr
+    payload = json.loads(fix_result.stdout)
+    assert payload['$schema'] == FIX_PLAN_SCHEMA
+    assert payload['format_version'] == FIX_PLAN_FORMAT_VERSION
+    assert payload['decision'] == 'warn'
+    assert payload['remediation_count'] == 2
+    assert payload['next_action'] == (
+        'Read at least one required context path before keeping changes to src/main.py: docs/rfcs/**.'
+    )
+    assert payload['remediations'][1]['suggested_commands'] == ['pytest -q']
+
+
+def test_cli_fix_command_renders_markdown_from_saved_report(tmp_path):
+    target = tmp_path / 'repo'
+    _copy_fixture_repo(target)
+    report_path = tmp_path / 'report.json'
+
+    compile_result = subprocess.run(
+        [sys.executable, '-m', 'cldc.cli.main', 'compile', str(target)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert compile_result.returncode == 0, compile_result.stderr
+
+    check_result = subprocess.run(
+        [
+            sys.executable,
+            '-m', 'cldc.cli.main', 'check', str(target),
+            '--write', 'generated/output.json',
+            '--json',
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert check_result.returncode == 2, check_result.stderr
+    report_path.write_text(check_result.stdout)
+
+    fix_result = subprocess.run(
+        [
+            sys.executable,
+            '-m', 'cldc.cli.main', 'fix', str(target),
+            '--report-file', str(report_path),
+            '--format', 'markdown',
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+
+    assert fix_result.returncode == 0, fix_result.stderr
+    assert '# Policy Fix Plan' in fix_result.stdout
+    assert '## Remediations' in fix_result.stdout
+    assert 'generated-lock' in fix_result.stdout
+    assert 'Suggested commands' not in fix_result.stdout
+
+
+
+def test_cli_fix_command_rejects_mixed_saved_report_and_runtime_inputs(tmp_path):
+    target = tmp_path / 'repo'
+    _copy_fixture_repo(target)
+    report_path = tmp_path / 'report.json'
+
+    compile_result = subprocess.run(
+        [sys.executable, '-m', 'cldc.cli.main', 'compile', str(target)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert compile_result.returncode == 0, compile_result.stderr
+
+    check_result = subprocess.run(
+        [
+            sys.executable,
+            '-m', 'cldc.cli.main', 'check', str(target),
+            '--write', 'generated/output.json',
+            '--json',
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert check_result.returncode == 2, check_result.stderr
+    report_path.write_text(check_result.stdout)
+
+    fix_result = subprocess.run(
+        [
+            sys.executable,
+            '-m', 'cldc.cli.main', 'fix', str(target),
+            '--report-file', str(report_path),
+            '--write', 'src/main.py',
+            '--json',
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+
+    assert fix_result.returncode == 1
+    payload = json.loads(fix_result.stderr)
+    assert payload['ok'] is False
+    assert 'cannot combine saved report input with fresh runtime evidence' in payload['error']
+
+
 
 def test_cli_help_exposes_version_and_absolute_path_support():
     result = subprocess.run(
@@ -655,6 +793,19 @@ def test_cli_help_exposes_version_and_absolute_path_support():
     assert '--report-file' in explain_help.stdout
     assert '--stdin-report' in explain_help.stdout
     assert '--format' in explain_help.stdout
+
+    fix_help = subprocess.run(
+        [sys.executable, '-m', 'cldc.cli.main', 'fix', '--help'],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert fix_help.returncode == 0
+    assert '--report-file' in fix_help.stdout
+    assert '--stdin-report' in fix_help.stdout
+    assert '--format' in fix_help.stdout
+    assert '--events-file' in fix_help.stdout
 
     version_result = subprocess.run(
         [sys.executable, '-m', 'cldc.cli.main', '--version'],

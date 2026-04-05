@@ -10,6 +10,7 @@ from cldc.compiler.policy_compiler import compile_repo_policy, doctor_repo_polic
 from cldc.runtime.evaluator import check_repo_policy
 from cldc.runtime.events import EMPTY_EXECUTION_INPUTS, load_execution_inputs_file, load_execution_inputs_text
 from cldc.runtime.git import collect_git_write_paths
+from cldc.runtime.remediation import build_fix_plan, render_fix_plan
 from cldc.runtime.reporting import load_check_report_file, load_check_report_text, render_check_report
 
 
@@ -99,6 +100,19 @@ def build_parser() -> argparse.ArgumentParser:
     _add_runtime_input_flags(explain_parser, include_write=True)
     _add_report_input_flags(explain_parser)
     _add_json_flag(explain_parser)
+
+    fix_parser = subparsers.add_parser(
+        "fix",
+        help="Generate a remediation plan from saved JSON or fresh runtime evidence",
+        description=(
+            "Build a deterministic remediation plan from either a saved JSON policy report artifact "
+            "or by evaluating fresh runtime evidence against the compiled policy lockfile."
+        ),
+    )
+    fix_parser.add_argument("repo", nargs="?", default=".", help="Repo root or any path inside the repo")
+    _add_runtime_input_flags(fix_parser, include_write=True)
+    _add_report_input_flags(fix_parser)
+    _add_json_flag(fix_parser)
     return parser
 
 
@@ -257,6 +271,36 @@ def _load_explain_payload(args) -> dict[str, object]:
 
 
 
+def _load_fix_payload(args) -> dict[str, object]:
+    if getattr(args, 'report_file', None) and getattr(args, 'stdin_report', False):
+        raise ValueError("`cldc fix` accepts only one saved report source: choose --report-file or --stdin-report")
+    if getattr(args, 'stdin_json', False) and getattr(args, 'stdin_report', False):
+        raise ValueError("`cldc fix` cannot consume both --stdin-json and --stdin-report from stdin in the same run")
+
+    if getattr(args, 'report_file', None) or getattr(args, 'stdin_report', False):
+        if _has_runtime_inputs(args):
+            raise ValueError(
+                "`cldc fix` cannot combine saved report input with fresh runtime evidence; "
+                "use either --report-file/--stdin-report or the runtime evidence flags"
+            )
+        if getattr(args, 'report_file', None):
+            report_payload = load_check_report_file(args.report_file)
+        else:
+            report_payload = load_check_report_text(sys.stdin.read(), source='stdin')
+    else:
+        report = check_repo_policy(
+            Path(args.repo),
+            read_paths=args.read_paths,
+            write_paths=args.write_paths,
+            commands=args.commands,
+            event_payload=_load_cli_event_payload(args),
+        )
+        report_payload = _check_payload(report)
+
+    return build_fix_plan(report_payload)
+
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -302,6 +346,13 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps(payload, indent=2, sort_keys=True))
             else:
                 print(render_check_report(payload, format=args.format))
+            return 0
+        if args.command == "fix":
+            payload = _load_fix_payload(args)
+            if args.json_output:
+                print(json.dumps(payload, indent=2, sort_keys=True))
+            else:
+                print(render_fix_plan(payload, format=args.format))
             return 0
     except Exception as exc:
         if getattr(args, "json_output", False):
