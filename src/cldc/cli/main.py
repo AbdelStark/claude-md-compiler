@@ -10,6 +10,7 @@ from cldc.compiler.policy_compiler import compile_repo_policy, doctor_repo_polic
 from cldc.runtime.evaluator import check_repo_policy
 from cldc.runtime.events import EMPTY_EXECUTION_INPUTS, load_execution_inputs_file, load_execution_inputs_text
 from cldc.runtime.git import collect_git_write_paths
+from cldc.runtime.reporting import load_check_report_file, load_check_report_text, render_check_report
 
 
 def _add_json_flag(parser: argparse.ArgumentParser) -> None:
@@ -25,6 +26,16 @@ def _add_runtime_input_flags(parser: argparse.ArgumentParser, *, include_write: 
     parser.add_argument("--events-file", dest="events_file", help="Load execution input JSON from a file and merge it with explicit runtime flags")
     parser.add_argument("--stdin-json", action="store_true", dest="stdin_json", help="Load execution input JSON from stdin and merge it with explicit runtime flags")
 
+
+def _add_report_input_flags(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--report-file", dest="report_file", help="Load an existing JSON policy report and render it without re-running evaluation")
+    parser.add_argument("--stdin-report", action="store_true", dest="stdin_report", help="Load an existing JSON policy report from stdin and render it without re-running evaluation")
+    parser.add_argument(
+        "--format",
+        choices=("text", "markdown"),
+        default="text",
+        help="Render format for non-JSON explain output (default: text)",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -76,6 +87,18 @@ def build_parser() -> argparse.ArgumentParser:
     ci_parser.add_argument("--head", help="Head git ref for a range diff (defaults to HEAD when --base is provided)")
     _add_runtime_input_flags(ci_parser, include_write=False)
     _add_json_flag(ci_parser)
+
+    explain_parser = subparsers.add_parser(
+        "explain",
+        help="Render an explainable policy report from saved JSON or fresh runtime evidence",
+        description=(
+            "Explain policy results from either a saved JSON report artifact or by evaluating fresh runtime evidence against the compiled policy lockfile."
+        ),
+    )
+    explain_parser.add_argument("repo", nargs="?", default=".", help="Repo root or any path inside the repo")
+    _add_runtime_input_flags(explain_parser, include_write=True)
+    _add_report_input_flags(explain_parser)
+    _add_json_flag(explain_parser)
     return parser
 
 
@@ -196,6 +219,44 @@ def _load_cli_event_payload(args) -> dict[str, list[str]] | None:
 
 
 
+def _has_runtime_inputs(args) -> bool:
+    return bool(
+        getattr(args, 'read_paths', None)
+        or getattr(args, 'write_paths', None)
+        or getattr(args, 'commands', None)
+        or getattr(args, 'events_file', None)
+        or getattr(args, 'stdin_json', False)
+    )
+
+
+
+def _load_explain_payload(args) -> dict[str, object]:
+    if getattr(args, 'report_file', None) and getattr(args, 'stdin_report', False):
+        raise ValueError("`cldc explain` accepts only one saved report source: choose --report-file or --stdin-report")
+    if getattr(args, 'stdin_json', False) and getattr(args, 'stdin_report', False):
+        raise ValueError("`cldc explain` cannot consume both --stdin-json and --stdin-report from stdin in the same run")
+
+    if getattr(args, 'report_file', None) or getattr(args, 'stdin_report', False):
+        if _has_runtime_inputs(args):
+            raise ValueError(
+                "`cldc explain` cannot combine saved report input with fresh runtime evidence; "
+                "use either --report-file/--stdin-report or the runtime evidence flags"
+            )
+        if getattr(args, 'report_file', None):
+            return load_check_report_file(args.report_file)
+        return load_check_report_text(sys.stdin.read(), source='stdin')
+
+    report = check_repo_policy(
+        Path(args.repo),
+        read_paths=args.read_paths,
+        write_paths=args.write_paths,
+        commands=args.commands,
+        event_payload=_load_cli_event_payload(args),
+    )
+    return _check_payload(report)
+
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -235,6 +296,13 @@ def main(argv: list[str] | None = None) -> int:
             )
             _print_check_result(report, args.json_output, git_metadata=git_metadata)
             return 2 if report.blocking_violation_count else 0
+        if args.command == "explain":
+            payload = _load_explain_payload(args)
+            if args.json_output:
+                print(json.dumps(payload, indent=2, sort_keys=True))
+            else:
+                print(render_check_report(payload, format=args.format))
+            return 0
     except Exception as exc:
         if getattr(args, "json_output", False):
             print(

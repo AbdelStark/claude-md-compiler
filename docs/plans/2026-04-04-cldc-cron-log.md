@@ -163,3 +163,24 @@
   - Test coverage grew from 47 to 48 passing tests, with dedicated assertions for explainability behavior across pass, warn, and block paths.
 - **Next highest-leverage task**
   - Ship a dedicated `cldc explain` command that can render or export the new report model from existing lockfile + evidence artifacts, rather than only surfacing explainability inline during `check` / `ci` execution.
+
+## Iteration 9 — SHIPPING FEATURES
+- **What changed**
+  - Shipped a dedicated `cldc explain` command that can either evaluate fresh runtime evidence or render a previously saved JSON policy report artifact without re-running enforcement.
+  - Added a new runtime reporting module that validates policy report artifacts and renders deterministic text or Markdown explanations with rule provenance, rationale, matched inputs, and recommended next actions.
+  - Hardened `cldc explain` input handling so saved-report mode and fresh-evidence mode stay explicit, including refusal to mix stdin/report sources in ambiguous ways.
+  - Expanded CLI coverage for direct explain runs, saved-report Markdown rendering, and help text for the new explain surface.
+  - Updated `README.md` so the documented CLI now matches the shipped `compile` / `doctor` / `check` / `ci` / `explain` workflow.
+- **Verification run**
+  - `python -m pytest -q` → `50 passed`
+  - `python -m pip install -e .` → success
+  - `python -m build` → success (sdist + wheel)
+  - `cldc explain <tmp-repo> --write src/main.py --format markdown` → success, renders a reviewer-friendly explanation with provenance and next steps
+  - `cldc explain <tmp-repo> --report-file /tmp/cldc-report.json --format markdown` → success, renders a saved blocking report artifact without re-running evaluation
+- **Current state of project**
+  - The project now has a complete explainability handoff path: enforcement can emit JSON once and downstream humans/automation can render it later as text or Markdown.
+  - `cldc explain` closes a real end-to-end workflow gap for CI comments, PR summaries, and operator handoffs because consumers no longer need to re-implement report rendering logic around `cldc check` / `cldc ci` JSON.
+  - The CLI surface is now much closer to the intended product shape from the product spec (`compile`, `check`, `explain`, `doctor`, `ci`), with 50 passing tests and green packaging verification.
+  - Commit shipped on `main` with message `feat: add explain command for policy reports`.
+- **Next highest-leverage task**
+  - Ship the first `cldc fix` / remediation slice so blocking or warning reports can produce machine-readable fix suggestions or templated follow-up actions instead of stopping at explanation alone.

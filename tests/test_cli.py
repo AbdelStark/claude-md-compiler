@@ -477,6 +477,89 @@ def test_cli_ci_command_reports_json_errors_for_missing_git_selector(tmp_path):
 
 
 
+def test_cli_explain_command_renders_text_from_fresh_inputs(tmp_path):
+    target = tmp_path / 'repo'
+    _copy_fixture_repo(target)
+
+    compile_result = subprocess.run(
+        [sys.executable, '-m', 'cldc.cli.main', 'compile', str(target)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert compile_result.returncode == 0, compile_result.stderr
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            '-m', 'cldc.cli.main', 'explain', str(target),
+            '--write', 'src/main.py',
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert 'Policy explanation: warn' in result.stdout
+    assert 'Rule provenance:' in result.stdout
+    assert 'must-read-rfc' in result.stdout
+    assert 'run-tests' in result.stdout
+
+
+
+def test_cli_explain_command_renders_markdown_from_saved_report(tmp_path):
+    target = tmp_path / 'repo'
+    _copy_fixture_repo(target)
+    report_path = tmp_path / 'report.json'
+
+    compile_result = subprocess.run(
+        [sys.executable, '-m', 'cldc.cli.main', 'compile', str(target)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert compile_result.returncode == 0, compile_result.stderr
+
+    check_result = subprocess.run(
+        [
+            sys.executable,
+            '-m', 'cldc.cli.main', 'check', str(target),
+            '--write', 'generated/output.json',
+            '--json',
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert check_result.returncode == 2, check_result.stderr
+    report_path.write_text(check_result.stdout)
+
+    explain_result = subprocess.run(
+        [
+            sys.executable,
+            '-m', 'cldc.cli.main', 'explain', str(target),
+            '--report-file', str(report_path),
+            '--format', 'markdown',
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+
+    assert explain_result.returncode == 0, explain_result.stderr
+    assert '# Policy Explanation' in explain_result.stdout
+    assert '## Violations' in explain_result.stdout
+    assert 'generated-lock' in explain_result.stdout
+    assert 'Rule provenance' in explain_result.stdout
+
+
+
 def test_cli_help_exposes_version_and_absolute_path_support():
     result = subprocess.run(
         [sys.executable, '-m', 'cldc.cli.main', 'check', '--help'],
@@ -503,6 +586,18 @@ def test_cli_help_exposes_version_and_absolute_path_support():
     assert '--staged' in ci_help.stdout
     assert '--base' in ci_help.stdout
     assert '--head' in ci_help.stdout
+
+    explain_help = subprocess.run(
+        [sys.executable, '-m', 'cldc.cli.main', 'explain', '--help'],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert explain_help.returncode == 0
+    assert '--report-file' in explain_help.stdout
+    assert '--stdin-report' in explain_help.stdout
+    assert '--format' in explain_help.stdout
 
     version_result = subprocess.run(
         [sys.executable, '-m', 'cldc.cli.main', '--version'],

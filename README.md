@@ -13,7 +13,7 @@ This is a private spec-first repo. It exists to turn a sharp product idea into a
 - `docs/rfcs/` — implementation contracts
 
 ## Current status
-Early implementation phase. The repo now ships a working `cldc` CLI with `compile`, `doctor`, `check`, and git-aware `ci` commands, canonical source discovery from nested paths, deterministic lockfile generation, schema-aware doctor diagnostics, runtime enforcement for `deny_write`, `require_read`, and `require_command` rules, CI-friendly JSON event ingestion for runtime checks, one-command git diff evaluation for staged changes or base/head PR ranges, and reviewer-friendly check summaries / recommended next actions in both human and JSON output.
+Early implementation phase. The repo now ships a working `cldc` CLI with `compile`, `doctor`, `check`, `explain`, and git-aware `ci` commands, canonical source discovery from nested paths, deterministic lockfile generation, schema-aware doctor diagnostics, runtime enforcement for `deny_write`, `require_read`, and `require_command` rules, CI-friendly JSON event ingestion for runtime checks, one-command git diff evaluation for staged changes or base/head PR ranges, reviewer-friendly check summaries / recommended next actions, and reusable explainability rendering from saved report artifacts or fresh evidence.
 
 ## Install
 ```bash
@@ -31,6 +31,9 @@ cldc check . --events-file .cldc-events.json --json
 printf '%s' '{"events":[{"kind":"write","path":"src/app.py"},{"kind":"command","command":"pytest -q"}]}' | cldc check . --stdin-json --json
 cldc ci . --staged --json
 cldc ci . --base origin/main --head HEAD --json
+cldc explain . --write src/app.py
+cldc explain . --events-file .cldc-events.json --format markdown
+cldc explain . --report-file policy-report.json --format markdown
 cldc check . --write generated/output.json --json
 cldc doctor . --json
 ```
@@ -41,9 +44,12 @@ cldc doctor . --json
 
 `cldc ci` is the first git-aware wrapper around `cldc check`. It derives write paths from either `git diff --cached --name-only` (`--staged`) or `git diff --name-only <base>...<head>` (`--base` / `--head`), preserves the existing decision and violation JSON shape, appends git provenance, and now inherits the same explainable summary / next-action reporting as direct `cldc check` runs.
 
+`cldc explain` turns either fresh runtime evidence or a previously saved JSON policy report into a reviewer-friendly explanation with rule provenance, rationale, and recommended next steps. Use it when you want Markdown/text output for PR comments, CI summaries, or operator handoffs without re-implementing the report rendering yourself.
+
 ## Shipping notes
 - `cldc compile` must be rerun whenever policy sources change; the lockfile now carries a source digest and `doctor` / `check` will reject content drift even if timestamps are misleading.
 - `cldc check` expects paths to stay inside the discovered repo root and will reject paths that escape it.
 - `cldc check --events-file` and `cldc check --stdin-json` accept JSON shaped like `{"read_paths":[],"write_paths":[],"commands":[],"claims":[],"events":[...]}` where each event is a `read`, `write`, `command`, or `claim` object.
 - `cldc ci` requires either `--staged` or `--base` (optionally with `--head`) so git provenance stays explicit instead of relying on hidden diff heuristics.
+- `cldc explain` can either render fresh evidence inputs or a saved JSON report artifact, but it intentionally refuses to mix those modes in one invocation.
 - `cldc doctor` is the fastest preflight when CI or local runs report lockfile drift.
