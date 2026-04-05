@@ -142,3 +142,24 @@
   - Commit shipped on `main` with message `feat: add git-aware ci policy command`.
 - **Next highest-leverage task**
   - Ship the first `cldc explain` / explainability report slice so CI and local runs can turn raw violations into reviewer-friendly rationale, provenance, and recommended next actions without losing the stable JSON artifact model.
+
+## Iteration 8 — QUALITY / POLISH / PRODUCTION-GRADE
+- **What changed**
+  - Added the first explainability/polish slice to runtime reports: every `cldc check` / `cldc ci` result now includes a deterministic top-level `summary` plus a single `next_action` recommendation.
+  - Enriched each violation object with `explanation` and `recommended_action` fields so JSON consumers no longer need to reverse-engineer why a rule fired from raw rule metadata alone.
+  - Upgraded human-readable CLI output to print the aggregate summary, the recommended next action, and per-violation “why” / “next step” guidance while preserving the existing decision semantics and exit codes.
+  - Expanded runtime + CLI regression coverage for pass/warn/block explainability contracts and documented the stronger output guarantees in `README.md`.
+  - Verified the new explainability contract through both direct `cldc check` runs and git-aware `cldc ci` runs using disposable temp repos so tracked fixtures stay clean.
+- **Verification run**
+  - `python -m pytest -q` → `48 passed`
+  - `python -m pip install -e .` → success
+  - `python -m build` → success (sdist + wheel)
+  - `cldc check <tmp-repo> --write src/main.py --json` → success, now includes `summary`, `next_action`, and per-violation `explanation` / `recommended_action`
+  - `cldc ci <tmp-repo> --base HEAD --head HEAD --json` → success, returns the same explainability fields with `git` provenance and zero-change `pass` output
+- **Current state of project**
+  - The policy checker is more production-grade for humans and automation because outputs now directly answer what happened and what to do next instead of only surfacing low-level rule matches.
+  - The new JSON fields are deterministic and append-only, so downstream CI/reporting integrations can adopt them without losing the stable decision/violation contract already in place.
+  - Human CLI output is much more reviewer-friendly, which reduces operator friction even before a standalone `cldc explain` command exists.
+  - Test coverage grew from 47 to 48 passing tests, with dedicated assertions for explainability behavior across pass, warn, and block paths.
+- **Next highest-leverage task**
+  - Ship a dedicated `cldc explain` command that can render or export the new report model from existing lockfile + evidence artifacts, rather than only surfacing explainability inline during `check` / `ci` execution.

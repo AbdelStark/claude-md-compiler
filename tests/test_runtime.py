@@ -36,11 +36,15 @@ def test_check_repo_policy_reports_warn_only_violations(compiled_repo):
     assert report.decision == 'warn'
     assert report.violation_count == 2
     assert report.blocking_violation_count == 0
+    assert report.summary == 'Policy check found 2 non-blocking violation(s).'
+    assert report.next_action == 'Read at least one path matching docs/rfcs/** before modifying src/main.py.'
     assert [violation.rule_id for violation in report.violations] == ['must-read-rfc', 'run-tests']
     require_read = report.violations[0]
     assert require_read.required_paths == ['docs/rfcs/**']
+    assert require_read.explanation == "Write activity src/main.py triggered require_read rule 'must-read-rfc', but no required read matched docs/rfcs/**."
     require_command = report.violations[1]
     assert require_command.required_commands == ['pytest -q']
+    assert require_command.recommended_action == 'Run one of the required commands before finishing: pytest -q.'
     assert report.inputs['claims'] == []
 
 
@@ -54,6 +58,8 @@ def test_check_repo_policy_passes_when_required_inputs_are_present(compiled_repo
 
     assert report.ok is True
     assert report.decision == 'pass'
+    assert report.summary == 'Policy check passed with no violations.'
+    assert report.next_action is None
     assert report.violations == []
 
 
@@ -131,10 +137,13 @@ def test_check_repo_policy_blocks_deny_write_rule(compiled_repo):
 
     assert report.ok is False
     assert report.decision == 'block'
+    assert report.summary == 'Policy check found 1 violation(s), including 1 blocking violation(s).'
+    assert report.next_action == 'Avoid writing paths matching generated/**.'
     assert report.blocking_violation_count == 1
     violation = report.violations[0]
     assert violation.rule_id == 'generated-lock'
     assert violation.mode == 'block'
+    assert violation.explanation == "Write activity generated/output.json matched deny_write rule 'generated-lock'."
     assert violation.matched_paths == ['generated/output.json']
 
 

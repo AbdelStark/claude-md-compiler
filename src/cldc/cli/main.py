@@ -153,6 +153,7 @@ def _print_check_result(report, json_output: bool, *, git_metadata: dict[str, ob
                 f"({git_metadata.get('write_path_count', 0)} changed paths)"
             )
     print(f"Policy check: {report.decision}")
+    print(f"Summary: {report.summary}")
     print(f"Repo root: {report.repo_root}")
     print(f"Default mode: {report.default_mode}")
     print(
@@ -162,8 +163,12 @@ def _print_check_result(report, json_output: bool, *, git_metadata: dict[str, ob
     print(
         f"Violations: {report.violation_count} total ({report.blocking_violation_count} blocking)"
     )
+    if report.next_action:
+        print(f"Recommended next action: {report.next_action}")
     for violation in report.violations:
         print(f"- [{violation.mode}] {violation.rule_id} ({violation.kind}): {violation.message}")
+        print(f"  why: {violation.explanation}")
+        print(f"  next step: {violation.recommended_action}")
         if violation.matched_paths:
             print(f"  matched paths: {', '.join(violation.matched_paths)}")
         if violation.required_paths:

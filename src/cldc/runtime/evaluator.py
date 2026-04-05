@@ -25,6 +25,8 @@ class Violation:
     kind: str
     mode: str
     message: str
+    explanation: str
+    recommended_action: str
     matched_paths: list[str]
     matched_commands: list[str]
     required_paths: list[str]
@@ -43,6 +45,8 @@ class CheckReport:
     lockfile_path: str
     decision: str
     default_mode: str
+    summary: str
+    next_action: str | None
     inputs: dict[str, list[str]]
     violation_count: int
     blocking_violation_count: int
@@ -55,6 +59,8 @@ class CheckReport:
             "lockfile_path": self.lockfile_path,
             "decision": self.decision,
             "default_mode": self.default_mode,
+            "summary": self.summary,
+            "next_action": self.next_action,
             "inputs": self.inputs,
             "violation_count": self.violation_count,
             "blocking_violation_count": self.blocking_violation_count,
@@ -195,6 +201,50 @@ def _effective_mode(rule: dict[str, Any], default_mode: str) -> str:
     return mode
 
 
+def _join_for_humans(values: list[str]) -> str:
+    if not values:
+        return "<none>"
+    if len(values) == 1:
+        return values[0]
+    return ", ".join(values)
+
+
+def _explain_violation(
+    rule: dict[str, Any],
+    *,
+    matched_paths: list[str],
+    matched_commands: list[str],
+    required_paths: list[str],
+    required_commands: list[str],
+) -> tuple[str, str]:
+    rule_id = str(rule.get("id", "<unknown>"))
+    kind = str(rule.get("kind", "<unknown>"))
+    path_list = _join_for_humans(matched_paths)
+    command_list = _join_for_humans(matched_commands)
+    required_path_list = _join_for_humans(required_paths)
+    required_command_list = _join_for_humans(required_commands)
+
+    if kind == "deny_write":
+        return (
+            f"Write activity {path_list} matched deny_write rule '{rule_id}'.",
+            f"Avoid writing paths matching {required_path_list if required_paths else _join_for_humans(list(rule.get('paths') or []))}.",
+        )
+    if kind == "require_read":
+        return (
+            f"Write activity {path_list} triggered require_read rule '{rule_id}', but no required read matched {required_path_list}.",
+            f"Read at least one path matching {required_path_list} before modifying {path_list}.",
+        )
+    if kind == "require_command":
+        return (
+            f"Write activity {path_list} triggered require_command rule '{rule_id}', but no required command matched {required_command_list}.",
+            f"Run one of the required commands before finishing: {required_command_list}.",
+        )
+    return (
+        f"Rule '{rule_id}' triggered for paths {path_list} and commands {command_list}.",
+        "Inspect the matched rule and input evidence, then rerun the policy check.",
+    )
+
+
 def _build_violation(
     rule: dict[str, Any],
     *,
@@ -204,18 +254,51 @@ def _build_violation(
     required_paths: list[str] | None = None,
     required_commands: list[str] | None = None,
 ) -> Violation:
+    normalized_matched_paths = list(matched_paths or [])
+    normalized_matched_commands = list(matched_commands or [])
+    normalized_required_paths = list(required_paths or [])
+    normalized_required_commands = list(required_commands or [])
+    explanation, recommended_action = _explain_violation(
+        rule,
+        matched_paths=normalized_matched_paths,
+        matched_commands=normalized_matched_commands,
+        required_paths=normalized_required_paths,
+        required_commands=normalized_required_commands,
+    )
     return Violation(
         rule_id=str(rule.get("id", "<unknown>")),
         kind=str(rule.get("kind", "<unknown>")),
         mode=_effective_mode(rule, default_mode),
         message=str(rule.get("message", "")),
-        matched_paths=list(matched_paths or []),
-        matched_commands=list(matched_commands or []),
-        required_paths=list(required_paths or []),
-        required_commands=list(required_commands or []),
+        explanation=explanation,
+        recommended_action=recommended_action,
+        matched_paths=normalized_matched_paths,
+        matched_commands=normalized_matched_commands,
+        required_paths=normalized_required_paths,
+        required_commands=normalized_required_commands,
         source_path=rule.get("source_path"),
         source_block_id=rule.get("source_block_id"),
     )
+
+
+def _summarize_report(*, decision: str, violation_count: int, blocking_violation_count: int) -> str:
+    if violation_count == 0:
+        return "Policy check passed with no violations."
+    if decision == "block":
+        return (
+            f"Policy check found {violation_count} violation(s), including "
+            f"{blocking_violation_count} blocking violation(s)."
+        )
+    return f"Policy check found {violation_count} non-blocking violation(s)."
+
+
+def _next_action_for_violations(violations: list[Violation]) -> str | None:
+    if not violations:
+        return None
+    for violation in violations:
+        if violation.mode in BLOCKING_MODES:
+            return violation.recommended_action
+    return violations[0].recommended_action
 
 
 def _evaluate_rule(
@@ -314,19 +397,26 @@ def check_repo_policy(
         decision = "pass"
         ok = True
 
+    violation_count = len(violations)
     return CheckReport(
         ok=ok,
         repo_root=str(root),
         lockfile_path=LOCKFILE_PATH,
         decision=decision,
         default_mode=default_mode,
+        summary=_summarize_report(
+            decision=decision,
+            violation_count=violation_count,
+            blocking_violation_count=blocking_violation_count,
+        ),
+        next_action=_next_action_for_violations(violations),
         inputs={
             "read_paths": normalized_reads,
             "write_paths": normalized_writes,
             "commands": normalized_commands,
             "claims": normalized_claims,
         },
-        violation_count=len(violations),
+        violation_count=violation_count,
         blocking_violation_count=blocking_violation_count,
         violations=violations,
     )

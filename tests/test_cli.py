@@ -76,6 +76,38 @@ def test_cli_doctor_command_reports_repo_health(tmp_path):
     assert any('compiled lockfile not found' in warning for warning in payload['warnings'])
 
 
+def test_cli_check_command_human_output_includes_summary_and_next_action(tmp_path):
+    target = tmp_path / 'repo'
+    _copy_fixture_repo(target)
+
+    compile_result = subprocess.run(
+        [sys.executable, '-m', 'cldc.cli.main', 'compile', str(target)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert compile_result.returncode == 0, compile_result.stderr
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            '-m', 'cldc.cli.main', 'check', str(target),
+            '--write', 'src/main.py',
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert 'Policy check: warn' in result.stdout
+    assert 'Summary: Policy check found 2 non-blocking violation(s).' in result.stdout
+    assert 'Recommended next action: Read at least one path matching docs/rfcs/** before modifying src/main.py.' in result.stdout
+    assert "why: Write activity src/main.py triggered require_read rule 'must-read-rfc', but no required read matched docs/rfcs/**." in result.stdout
+
+
 def test_cli_check_command_returns_json_violations(tmp_path):
     target = tmp_path / 'repo'
     _copy_fixture_repo(target)
@@ -106,7 +138,10 @@ def test_cli_check_command_returns_json_violations(tmp_path):
     payload = json.loads(result.stdout)
     assert payload['ok'] is True
     assert payload['decision'] == 'warn'
+    assert payload['summary'] == 'Policy check found 2 non-blocking violation(s).'
+    assert payload['next_action'] == 'Read at least one path matching docs/rfcs/** before modifying src/main.py.'
     assert payload['violation_count'] == 2
+    assert payload['violations'][0]['explanation'] == "Write activity src/main.py triggered require_read rule 'must-read-rfc', but no required read matched docs/rfcs/**."
     assert [violation['rule_id'] for violation in payload['violations']] == ['must-read-rfc', 'run-tests']
 
 
@@ -152,6 +187,8 @@ def test_cli_check_command_accepts_events_file_json(tmp_path):
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
     assert payload['decision'] == 'pass'
+    assert payload['summary'] == 'Policy check passed with no violations.'
+    assert payload['next_action'] is None
     assert payload['inputs']['claims'] == ['qa-reviewed']
 
 
@@ -185,6 +222,8 @@ def test_cli_check_command_accepts_stdin_json(tmp_path):
     assert result.returncode == 2, result.stderr
     payload = json.loads(result.stdout)
     assert payload['decision'] == 'block'
+    assert payload['summary'] == 'Policy check found 1 violation(s), including 1 blocking violation(s).'
+    assert payload['next_action'] == 'Avoid writing paths matching generated/**.'
     assert payload['violations'][0]['rule_id'] == 'generated-lock'
 
 
@@ -250,6 +289,8 @@ def test_cli_check_command_blocks_on_blocking_violations(tmp_path):
     payload = json.loads(result.stdout)
     assert payload['ok'] is False
     assert payload['decision'] == 'block'
+    assert payload['summary'] == 'Policy check found 1 violation(s), including 1 blocking violation(s).'
+    assert payload['next_action'] == 'Avoid writing paths matching generated/**.'
     assert payload['blocking_violation_count'] == 1
     assert payload['violations'][0]['rule_id'] == 'generated-lock'
 

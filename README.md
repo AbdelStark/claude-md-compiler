@@ -13,7 +13,7 @@ This is a private spec-first repo. It exists to turn a sharp product idea into a
 - `docs/rfcs/` — implementation contracts
 
 ## Current status
-Early implementation phase. The repo now ships a working `cldc` CLI with `compile`, `doctor`, `check`, and git-aware `ci` commands, canonical source discovery from nested paths, deterministic lockfile generation, schema-aware doctor diagnostics, runtime enforcement for `deny_write`, `require_read`, and `require_command` rules, CI-friendly JSON event ingestion for runtime checks, and one-command git diff evaluation for staged changes or base/head PR ranges.
+Early implementation phase. The repo now ships a working `cldc` CLI with `compile`, `doctor`, `check`, and git-aware `ci` commands, canonical source discovery from nested paths, deterministic lockfile generation, schema-aware doctor diagnostics, runtime enforcement for `deny_write`, `require_read`, and `require_command` rules, CI-friendly JSON event ingestion for runtime checks, one-command git diff evaluation for staged changes or base/head PR ranges, and reviewer-friendly check summaries / recommended next actions in both human and JSON output.
 
 ## Install
 ```bash
@@ -37,9 +37,9 @@ cldc doctor . --json
 
 `cldc doctor` validates more than file presence: it inspects the existing lockfile for malformed JSON, schema / format drift, rule-count mismatches, repo-root mismatches, stale artifacts, and full source-digest drift so operators can catch content changes even when timestamps and rule counts still look plausible. It also returns a single recommended next action so operators know what to do next.
 
-`cldc check` loads the compiled lockfile and evaluates runtime evidence against the compiled policy. The current MVP covers `deny_write`, `require_read`, and `require_command`, emits stable JSON for automation, accepts both repo-relative and absolute in-repo paths, supports batch execution inputs from `--events-file` and `--stdin-json`, and refuses to enforce stale, schema-drifted, or source-drifted lockfiles so CI does not silently trust outdated policy artifacts.
+`cldc check` loads the compiled lockfile and evaluates runtime evidence against the compiled policy. The current MVP covers `deny_write`, `require_read`, and `require_command`, emits stable JSON for automation, accepts both repo-relative and absolute in-repo paths, supports batch execution inputs from `--events-file` and `--stdin-json`, surfaces a deterministic summary plus a single recommended next action, and refuses to enforce stale, schema-drifted, or source-drifted lockfiles so CI does not silently trust outdated policy artifacts.
 
-`cldc ci` is the first git-aware wrapper around `cldc check`. It derives write paths from either `git diff --cached --name-only` (`--staged`) or `git diff --name-only <base>...<head>` (`--base` / `--head`), preserves the existing decision and violation JSON shape, and appends git provenance so CI can report exactly which diff source was evaluated.
+`cldc ci` is the first git-aware wrapper around `cldc check`. It derives write paths from either `git diff --cached --name-only` (`--staged`) or `git diff --name-only <base>...<head>` (`--base` / `--head`), preserves the existing decision and violation JSON shape, appends git provenance, and now inherits the same explainable summary / next-action reporting as direct `cldc check` runs.
 
 ## Shipping notes
 - `cldc compile` must be rerun whenever policy sources change; the lockfile now carries a source digest and `doctor` / `check` will reject content drift even if timestamps are misleading.
