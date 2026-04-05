@@ -4,9 +4,11 @@ import subprocess
 import sys
 
 
-def test_cli_compile_command(tmp_path):
+PYTHONPATH_ENV = {'PYTHONPATH': str(Path(__file__).resolve().parents[1] / 'src')}
+
+
+def _copy_fixture_repo(target: Path) -> None:
     fixture = Path(__file__).parent / 'fixtures' / 'repo_a'
-    target = tmp_path / 'repo'
     target.mkdir()
     for source in fixture.rglob('*'):
         if source.is_file():
@@ -14,12 +16,17 @@ def test_cli_compile_command(tmp_path):
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination.write_text(source.read_text())
 
+
+def test_cli_compile_command(tmp_path):
+    target = tmp_path / 'repo'
+    _copy_fixture_repo(target)
+
     result = subprocess.run(
         [sys.executable, '-m', 'cldc.cli.main', 'compile', str(target)],
         capture_output=True,
         text=True,
         check=False,
-        env={'PYTHONPATH': str(Path(__file__).resolve().parents[1] / 'src')},
+        env=PYTHONPATH_ENV,
     )
 
     assert result.returncode == 0, result.stderr
@@ -38,7 +45,7 @@ def test_cli_doctor_command_reports_repo_health(tmp_path):
         capture_output=True,
         text=True,
         check=False,
-        env={'PYTHONPATH': str(Path(__file__).resolve().parents[1] / 'src')},
+        env=PYTHONPATH_ENV,
     )
 
     assert result.returncode == 0, result.stderr
@@ -49,21 +56,15 @@ def test_cli_doctor_command_reports_repo_health(tmp_path):
 
 
 def test_cli_check_command_returns_json_violations(tmp_path):
-    fixture = Path(__file__).parent / 'fixtures' / 'repo_a'
     target = tmp_path / 'repo'
-    target.mkdir()
-    for source in fixture.rglob('*'):
-        if source.is_file():
-            destination = target / source.relative_to(fixture)
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_text(source.read_text())
+    _copy_fixture_repo(target)
 
     compile_result = subprocess.run(
         [sys.executable, '-m', 'cldc.cli.main', 'compile', str(target)],
         capture_output=True,
         text=True,
         check=False,
-        env={'PYTHONPATH': str(Path(__file__).resolve().parents[1] / 'src')},
+        env=PYTHONPATH_ENV,
     )
     assert compile_result.returncode == 0, compile_result.stderr
 
@@ -77,7 +78,7 @@ def test_cli_check_command_returns_json_violations(tmp_path):
         capture_output=True,
         text=True,
         check=False,
-        env={'PYTHONPATH': str(Path(__file__).resolve().parents[1] / 'src')},
+        env=PYTHONPATH_ENV,
     )
 
     assert result.returncode == 0, result.stderr
@@ -88,22 +89,48 @@ def test_cli_check_command_returns_json_violations(tmp_path):
     assert [violation['rule_id'] for violation in payload['violations']] == ['must-read-rfc', 'run-tests']
 
 
-def test_cli_check_command_blocks_on_blocking_violations(tmp_path):
-    fixture = Path(__file__).parent / 'fixtures' / 'repo_a'
+def test_cli_check_command_accepts_absolute_paths(tmp_path):
     target = tmp_path / 'repo'
-    target.mkdir()
-    for source in fixture.rglob('*'):
-        if source.is_file():
-            destination = target / source.relative_to(fixture)
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_text(source.read_text())
+    _copy_fixture_repo(target)
 
     compile_result = subprocess.run(
         [sys.executable, '-m', 'cldc.cli.main', 'compile', str(target)],
         capture_output=True,
         text=True,
         check=False,
-        env={'PYTHONPATH': str(Path(__file__).resolve().parents[1] / 'src')},
+        env=PYTHONPATH_ENV,
+    )
+    assert compile_result.returncode == 0, compile_result.stderr
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            '-m', 'cldc.cli.main', 'check', str(target),
+            '--write', str((target / 'src/main.py').resolve()),
+            '--json',
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload['inputs']['write_paths'] == ['src/main.py']
+    assert [violation['rule_id'] for violation in payload['violations']] == ['must-read-rfc', 'run-tests']
+
+
+def test_cli_check_command_blocks_on_blocking_violations(tmp_path):
+    target = tmp_path / 'repo'
+    _copy_fixture_repo(target)
+
+    compile_result = subprocess.run(
+        [sys.executable, '-m', 'cldc.cli.main', 'compile', str(target)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
     )
     assert compile_result.returncode == 0, compile_result.stderr
 
@@ -117,7 +144,7 @@ def test_cli_check_command_blocks_on_blocking_violations(tmp_path):
         capture_output=True,
         text=True,
         check=False,
-        env={'PYTHONPATH': str(Path(__file__).resolve().parents[1] / 'src')},
+        env=PYTHONPATH_ENV,
     )
 
     assert result.returncode == 2, result.stderr
@@ -126,3 +153,27 @@ def test_cli_check_command_blocks_on_blocking_violations(tmp_path):
     assert payload['decision'] == 'block'
     assert payload['blocking_violation_count'] == 1
     assert payload['violations'][0]['rule_id'] == 'generated-lock'
+
+
+def test_cli_help_exposes_version_and_absolute_path_support():
+    result = subprocess.run(
+        [sys.executable, '-m', 'cldc.cli.main', 'check', '--help'],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+
+    assert result.returncode == 0
+    assert 'repo-relative or absolute' in result.stdout
+    assert 'discovered' in result.stdout
+
+    version_result = subprocess.run(
+        [sys.executable, '-m', 'cldc.cli.main', '--version'],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert version_result.returncode == 0
+    assert version_result.stdout.strip().startswith('cldc 0.1.0')

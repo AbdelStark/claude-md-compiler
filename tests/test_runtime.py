@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -53,6 +54,25 @@ def test_check_repo_policy_passes_when_required_inputs_are_present(compiled_repo
     assert report.violations == []
 
 
+def test_check_repo_policy_normalizes_absolute_paths_inside_repo(compiled_repo):
+    report = check_repo_policy(
+        compiled_repo,
+        write_paths=[str((compiled_repo / 'src/main.py').resolve())],
+    )
+
+    assert report.decision == 'warn'
+    assert [violation.rule_id for violation in report.violations] == ['must-read-rfc', 'run-tests']
+    assert report.inputs['write_paths'] == ['src/main.py']
+
+
+def test_check_repo_policy_rejects_paths_outside_repo(compiled_repo, tmp_path):
+    outside = tmp_path / 'elsewhere.txt'
+    outside.write_text('nope\n')
+
+    with pytest.raises(ValueError, match='outside the discovered repo root'):
+        check_repo_policy(compiled_repo, write_paths=[str(outside.resolve())])
+
+
 def test_check_repo_policy_blocks_deny_write_rule(compiled_repo):
     report = check_repo_policy(
         compiled_repo,
@@ -83,3 +103,33 @@ def test_check_repo_policy_rejects_malformed_lockfile(tmp_path):
 
     with pytest.raises(ValueError, match='not valid JSON'):
         check_repo_policy(tmp_path)
+
+
+def test_check_repo_policy_rejects_lockfile_schema_drift(tmp_path):
+    (tmp_path / 'CLAUDE.md').write_text(
+        "```cldc\nrules:\n  - id: deny\n    kind: deny_write\n    paths: ['generated/**']\n    message: stop\n```\n"
+    )
+    compile_repo_policy(tmp_path)
+    lockfile = tmp_path / '.claude' / 'policy.lock.json'
+    payload = json.loads(lockfile.read_text())
+    payload['$schema'] = 'https://cldc.dev/schemas/policy-lock/v0'
+    lockfile.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match='schema does not match'):
+        check_repo_policy(tmp_path, write_paths=['generated/output.json'])
+
+
+def test_check_repo_policy_rejects_stale_lockfile(tmp_path):
+    claude_path = tmp_path / 'CLAUDE.md'
+    claude_path.write_text(
+        "```cldc\nrules:\n  - id: deny\n    kind: deny_write\n    paths: ['generated/**']\n    message: stop\n```\n"
+    )
+    compile_repo_policy(tmp_path)
+    lockfile_mtime = (tmp_path / '.claude' / 'policy.lock.json').stat().st_mtime
+    claude_path.write_text(
+        "```cldc\nrules:\n  - id: deny\n    kind: deny_write\n    paths: ['generated/**']\n    message: changed\n```\n"
+    )
+    os.utime(claude_path, (lockfile_mtime + 5, lockfile_mtime + 5))
+
+    with pytest.raises(ValueError, match='appears stale'):
+        check_repo_policy(tmp_path, write_paths=['generated/output.json'])

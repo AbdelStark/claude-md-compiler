@@ -60,3 +60,22 @@
   - Commit shipped on `main` with message `feat: add runtime policy check command`.
 - **Next highest-leverage task**
   - Expand runtime inputs beyond explicit CLI flags by adding stdin/JSON event ingestion (or a CI-focused wrapper command) so real agent transcripts and automation can feed `cldc check` without manual argument repetition.
+
+## Iteration 4 — QUALITY / POLISH / PRODUCTION-GRADE
+- **What changed**
+  - Fixed a production-grade enforcement gap where absolute paths silently bypassed policy checks; `cldc check` now canonicalizes both repo-relative and absolute in-repo paths before glob matching.
+  - Hardened `cldc check` to reject escaped/out-of-repo paths and to fail fast on schema drift, format drift, repo-root mismatch, embedded rule-count mismatch, and stale lockfiles instead of trusting outdated artifacts.
+  - Improved CLI/operator ergonomics with `cldc --version`, richer command descriptions, explicit `--json` help text, and README guidance that now documents absolute-path support and stale-lockfile refusal.
+  - Expanded runtime + CLI tests to cover absolute-path normalization, out-of-repo path rejection, stale lockfile rejection, schema drift rejection, and version/help visibility.
+- **Verification run**
+  - `python -m pytest -q` → `33 passed`
+  - `python -m pip install -e .` → success
+  - `cldc --version` → success (`cldc 0.1.0`)
+  - `cldc check tests/fixtures/repo_a --write $(pwd)/tests/fixtures/repo_a/src/main.py --json` → success, normalizes the absolute path to `src/main.py` and returns the expected warning-level violations
+- **Current state of project**
+  - Runtime enforcement is materially more trustworthy because real absolute-path evidence from shells/CI now hits the same policy rules as repo-relative inputs.
+  - `cldc check` will no longer silently evaluate against drifted or stale policy artifacts, reducing the chance of false confidence in CI.
+  - Installability remains clean via editable install, and the CLI surface is easier for operators to discover and script correctly.
+  - The repo now has 33 passing tests covering both happy-path enforcement and key failure modes around stale/drifted artifacts.
+- **Next highest-leverage task**
+  - Add a CI-friendly event ingestion path for `cldc check` (stdin / JSON payloads or a wrapper command) so real agent transcripts and automation can feed evidence without repetitive flag expansion.

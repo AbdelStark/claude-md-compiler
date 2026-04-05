@@ -5,28 +5,48 @@ import json
 from pathlib import Path
 import sys
 
+from cldc import __version__
 from cldc.compiler.policy_compiler import compile_repo_policy, doctor_repo_policy
 from cldc.runtime.evaluator import check_repo_policy
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="cldc")
+    parser = argparse.ArgumentParser(
+        prog="cldc",
+        description="Compile and enforce repository policy derived from CLAUDE.md.",
+    )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    compile_parser = subparsers.add_parser("compile", help="Compile repo policy into a lockfile")
+    compile_parser = subparsers.add_parser(
+        "compile",
+        help="Compile repo policy into a lockfile",
+        description="Parse CLAUDE.md, compiler config, and policy fragments into .claude/policy.lock.json.",
+    )
     compile_parser.add_argument("repo", nargs="?", default=".", help="Repo root or any path inside the repo")
-    compile_parser.add_argument("--json", action="store_true", dest="json_output")
+    compile_parser.add_argument("--json", action="store_true", dest="json_output", help="Emit machine-readable JSON output")
 
-    doctor_parser = subparsers.add_parser("doctor", help="Inspect policy discovery and validation state")
+    doctor_parser = subparsers.add_parser(
+        "doctor",
+        help="Inspect policy discovery and validation state",
+        description="Validate discovery, source parsing, and lockfile health for a repository policy.",
+    )
     doctor_parser.add_argument("repo", nargs="?", default=".", help="Repo root or any path inside the repo")
-    doctor_parser.add_argument("--json", action="store_true", dest="json_output")
+    doctor_parser.add_argument("--json", action="store_true", dest="json_output", help="Emit machine-readable JSON output")
 
-    check_parser = subparsers.add_parser("check", help="Evaluate runtime activity against the compiled policy")
+    check_parser = subparsers.add_parser(
+        "check",
+        help="Evaluate runtime activity against the compiled policy",
+        description=(
+            "Evaluate read paths, write paths, and executed commands against the compiled policy lockfile. "
+            "Paths may be repo-relative or absolute inside the discovered repo."
+        ),
+    )
     check_parser.add_argument("repo", nargs="?", default=".", help="Repo root or any path inside the repo")
     check_parser.add_argument("--read", action="append", default=[], dest="read_paths", help="Path read before editing; repeat for multiple paths")
     check_parser.add_argument("--write", action="append", default=[], dest="write_paths", help="Path written or otherwise touched; repeat for multiple paths")
     check_parser.add_argument("--command", action="append", default=[], dest="commands", help="Executed command string; repeat for multiple commands")
-    check_parser.add_argument("--json", action="store_true", dest="json_output")
+    check_parser.add_argument("--json", action="store_true", dest="json_output", help="Emit machine-readable JSON output")
     return parser
 
 

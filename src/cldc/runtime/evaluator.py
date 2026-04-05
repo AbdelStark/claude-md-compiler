@@ -7,7 +7,10 @@ from json import JSONDecodeError
 from pathlib import Path
 from typing import Any
 
+from cldc.compiler.policy_compiler import LOCKFILE_FORMAT_VERSION, LOCKFILE_SCHEMA
 from cldc.ingest.discovery import LOCKFILE_PATH, discover_policy_repo
+from cldc.ingest.source_loader import load_policy_sources
+from cldc.parser.rule_parser import parse_rule_documents
 
 BLOCKING_MODES = {"block", "fix"}
 NON_BLOCKING_MODES = {"observe", "warn"}
@@ -58,13 +61,30 @@ class CheckReport:
         }
 
 
-def _normalize_paths(paths: list[str] | None) -> list[str]:
+def _normalize_paths(paths: list[str] | None, *, repo_root: Path) -> list[str]:
     normalized: list[str] = []
+    resolved_root = repo_root.resolve()
     for raw in paths or []:
-        value = raw.strip().replace("\\", "/")
-        if not value:
+        candidate = raw.strip()
+        if not candidate:
             continue
-        normalized.append(value.lstrip("./"))
+
+        path_obj = Path(candidate)
+        if not path_obj.is_absolute():
+            path_obj = resolved_root / path_obj
+
+        resolved_path = path_obj.resolve(strict=False)
+        try:
+            relative_path = resolved_path.relative_to(resolved_root)
+        except ValueError as exc:
+            raise ValueError(
+                f"input path {raw!r} resolves outside the discovered repo root {resolved_root}"
+            ) from exc
+
+        normalized_path = relative_path.as_posix()
+        if normalized_path == ".":
+            continue
+        normalized.append(normalized_path)
     return normalized
 
 
@@ -103,6 +123,19 @@ def _load_lockfile(repo_root: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError("compiled lockfile must contain a JSON object at the top level")
 
+    if payload.get("$schema") != LOCKFILE_SCHEMA:
+        raise ValueError(
+            "compiled lockfile schema does not match this checker; re-run `cldc compile` to refresh it"
+        )
+    if payload.get("format_version") != LOCKFILE_FORMAT_VERSION:
+        raise ValueError(
+            "compiled lockfile format_version does not match this checker; re-run `cldc compile` to refresh it"
+        )
+    if payload.get("repo_root") != str(repo_root):
+        raise ValueError(
+            "compiled lockfile repo_root does not match the discovered repository root; re-run `cldc compile`"
+        )
+
     default_mode = payload.get("default_mode")
     if default_mode not in ALLOWED_MODES:
         raise ValueError(f"compiled lockfile has invalid default_mode: {default_mode!r}")
@@ -111,7 +144,36 @@ def _load_lockfile(repo_root: Path) -> dict[str, Any]:
     if not isinstance(rules, list):
         raise ValueError("compiled lockfile must contain a 'rules' list")
 
+    rule_count = payload.get("rule_count")
+    if not isinstance(rule_count, int):
+        raise ValueError("compiled lockfile must contain an integer 'rule_count'")
+    if rule_count != len(rules):
+        raise ValueError(
+            "compiled lockfile rule_count does not match the embedded rules; re-run `cldc compile`"
+        )
+
     return payload
+
+
+def _validate_lockfile_freshness(repo_root: Path, payload: dict[str, Any]) -> None:
+    bundle = load_policy_sources(repo_root)
+    parsed = parse_rule_documents(bundle)
+    lockfile = repo_root / LOCKFILE_PATH
+
+    newest_source_mtime = max((repo_root / source.path).stat().st_mtime for source in bundle.sources)
+    if lockfile.stat().st_mtime < newest_source_mtime:
+        raise ValueError(
+            "compiled lockfile appears stale relative to the current policy sources; re-run `cldc compile`"
+        )
+
+    if payload["default_mode"] != parsed.default_mode:
+        raise ValueError(
+            "compiled lockfile default_mode does not match the current policy sources; re-run `cldc compile`"
+        )
+    if payload["rule_count"] != len(parsed.rules):
+        raise ValueError(
+            "compiled lockfile rule_count does not match the current policy sources; re-run `cldc compile`"
+        )
 
 
 def _effective_mode(rule: dict[str, Any], default_mode: str) -> str:
@@ -203,9 +265,10 @@ def check_repo_policy(
 
     root = Path(discovery.repo_root)
     payload = _load_lockfile(root)
+    _validate_lockfile_freshness(root, payload)
     default_mode = payload["default_mode"]
-    normalized_reads = _normalize_paths(read_paths)
-    normalized_writes = _normalize_paths(write_paths)
+    normalized_reads = _normalize_paths(read_paths, repo_root=root)
+    normalized_writes = _normalize_paths(write_paths, repo_root=root)
     normalized_commands = _normalize_commands(commands)
 
     violations: list[Violation] = []
