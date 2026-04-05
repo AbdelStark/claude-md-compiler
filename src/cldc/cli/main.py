@@ -19,6 +19,15 @@ def _add_json_flag(parser: argparse.ArgumentParser) -> None:
 
 
 
+def _add_output_flag(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--output",
+        dest="output_path",
+        help="Also write the command output to a file (creates parent directories when needed)",
+    )
+
+
+
 def _add_runtime_input_flags(parser: argparse.ArgumentParser, *, include_write: bool) -> None:
     parser.add_argument("--read", action="append", default=[], dest="read_paths", help="Path read before editing; repeat for multiple paths")
     if include_write:
@@ -54,6 +63,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     compile_parser.add_argument("repo", nargs="?", default=".", help="Repo root or any path inside the repo")
     _add_json_flag(compile_parser)
+    _add_output_flag(compile_parser)
 
     doctor_parser = subparsers.add_parser(
         "doctor",
@@ -62,6 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     doctor_parser.add_argument("repo", nargs="?", default=".", help="Repo root or any path inside the repo")
     _add_json_flag(doctor_parser)
+    _add_output_flag(doctor_parser)
 
     check_parser = subparsers.add_parser(
         "check",
@@ -74,6 +85,7 @@ def build_parser() -> argparse.ArgumentParser:
     check_parser.add_argument("repo", nargs="?", default=".", help="Repo root or any path inside the repo")
     _add_runtime_input_flags(check_parser, include_write=True)
     _add_json_flag(check_parser)
+    _add_output_flag(check_parser)
 
     ci_parser = subparsers.add_parser(
         "ci",
@@ -88,6 +100,7 @@ def build_parser() -> argparse.ArgumentParser:
     ci_parser.add_argument("--head", help="Head git ref for a range diff (defaults to HEAD when --base is provided)")
     _add_runtime_input_flags(ci_parser, include_write=False)
     _add_json_flag(ci_parser)
+    _add_output_flag(ci_parser)
 
     explain_parser = subparsers.add_parser(
         "explain",
@@ -100,6 +113,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_runtime_input_flags(explain_parser, include_write=True)
     _add_report_input_flags(explain_parser)
     _add_json_flag(explain_parser)
+    _add_output_flag(explain_parser)
 
     fix_parser = subparsers.add_parser(
         "fix",
@@ -113,41 +127,53 @@ def build_parser() -> argparse.ArgumentParser:
     _add_runtime_input_flags(fix_parser, include_write=True)
     _add_report_input_flags(fix_parser)
     _add_json_flag(fix_parser)
+    _add_output_flag(fix_parser)
     return parser
 
+def _output_text(text: str, output_path: str | None = None) -> None:
+    print(text)
+    if output_path:
+        target = Path(output_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        normalized_text = text if text.endswith('\n') else f"{text}\n"
+        target.write_text(normalized_text)
 
-def _print_compile_result(compiled, json_output: bool) -> None:
+
+
+def _render_compile_result(compiled, json_output: bool) -> str:
     if json_output:
-        print(json.dumps(compiled.to_dict(), indent=2, sort_keys=True))
-        return
-    print(
-        f"Compiled {compiled.rule_count} rules from {compiled.source_count} sources into "
-        f"{compiled.lockfile_path} for {compiled.repo_root}"
-    )
-    print(f"Default mode: {compiled.default_mode}")
-    print(f"Source digest: {compiled.source_digest}")
+        return json.dumps(compiled.to_dict(), indent=2, sort_keys=True)
+
+    lines = [
+        (
+            f"Compiled {compiled.rule_count} rules from {compiled.source_count} sources into "
+            f"{compiled.lockfile_path} for {compiled.repo_root}"
+        ),
+        f"Default mode: {compiled.default_mode}",
+        f"Source digest: {compiled.source_digest}",
+    ]
     if compiled.warnings:
-        print("Discovery warnings:")
-        for warning in compiled.warnings:
-            print(f"- {warning}")
+        lines.append("Discovery warnings:")
+        lines.extend(f"- {warning}" for warning in compiled.warnings)
+    return "\n".join(lines)
 
 
-def _print_doctor_result(report, json_output: bool) -> None:
+
+def _render_doctor_result(report, json_output: bool) -> str:
     if json_output:
-        print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
-        return
+        return json.dumps(report.to_dict(), indent=2, sort_keys=True)
 
     status = "healthy" if not report.errors else "broken"
-    print(f"Doctor status: {status}")
-    print(f"Repo root: {report.repo_root}")
-    print(f"Sources: {report.source_count}")
-    print(f"Rules: {report.rule_count}")
-    print(f"Default mode: {report.default_mode or 'n/a'}")
+    lines = [
+        f"Doctor status: {status}",
+        f"Repo root: {report.repo_root}",
+        f"Sources: {report.source_count}",
+        f"Rules: {report.rule_count}",
+        f"Default mode: {report.default_mode or 'n/a'}",
+    ]
     if report.source_digest:
-        print(f"Current source digest: {report.source_digest}")
-    print(
-        f"Lockfile: {report.lockfile_path} ({'present' if report.lockfile_exists else 'missing'})"
-    )
+        lines.append(f"Current source digest: {report.source_digest}")
+    lines.append(f"Lockfile: {report.lockfile_path} ({'present' if report.lockfile_exists else 'missing'})")
     if report.lockfile_schema or report.lockfile_format_version or report.lockfile_source_digest:
         metadata_bits = [
             f"schema={report.lockfile_schema or 'unknown'}",
@@ -155,17 +181,17 @@ def _print_doctor_result(report, json_output: bool) -> None:
         ]
         if report.lockfile_source_digest:
             metadata_bits.append(f"source_digest={report.lockfile_source_digest}")
-        print("Lockfile metadata: " + ", ".join(metadata_bits))
+        lines.append("Lockfile metadata: " + ", ".join(metadata_bits))
     if report.warnings:
-        print("Warnings:")
-        for warning in report.warnings:
-            print(f"- {warning}")
+        lines.append("Warnings:")
+        lines.extend(f"- {warning}" for warning in report.warnings)
     if report.errors:
-        print("Errors:")
-        for error in report.errors:
-            print(f"- {error}")
+        lines.append("Errors:")
+        lines.extend(f"- {error}" for error in report.errors)
     if report.next_action:
-        print(f"Recommended next action: {report.next_action}")
+        lines.append(f"Recommended next action: {report.next_action}")
+    return "\n".join(lines)
+
 
 
 def _check_payload(report, git_metadata: dict[str, object] | None = None) -> dict[str, object]:
@@ -176,42 +202,46 @@ def _check_payload(report, git_metadata: dict[str, object] | None = None) -> dic
 
 
 
-def _print_check_result(report, json_output: bool, *, git_metadata: dict[str, object] | None = None) -> None:
+def _render_check_result(report, json_output: bool, *, git_metadata: dict[str, object] | None = None) -> str:
     if json_output:
-        print(json.dumps(_check_payload(report, git_metadata), indent=2, sort_keys=True))
-        return
+        return json.dumps(_check_payload(report, git_metadata), indent=2, sort_keys=True)
 
+    lines: list[str] = []
     if git_metadata is not None:
         if git_metadata.get('mode') == 'staged':
-            print(f"Git input: staged diff ({git_metadata.get('write_path_count', 0)} changed paths)")
+            lines.append(f"Git input: staged diff ({git_metadata.get('write_path_count', 0)} changed paths)")
         else:
-            print(
+            lines.append(
                 f"Git input: {git_metadata.get('base')}...{git_metadata.get('head')} "
                 f"({git_metadata.get('write_path_count', 0)} changed paths)"
             )
-    print(f"Policy check: {report.decision}")
-    print(f"Summary: {report.summary}")
-    print(f"Repo root: {report.repo_root}")
-    print(f"Default mode: {report.default_mode}")
-    print(
-        f"Inputs: reads={len(report.inputs['read_paths'])}, writes={len(report.inputs['write_paths'])}, "
-        f"commands={len(report.inputs['commands'])}, claims={len(report.inputs.get('claims', []))}"
-    )
-    print(
-        f"Violations: {report.violation_count} total ({report.blocking_violation_count} blocking)"
+    lines.extend(
+        [
+            f"Policy check: {report.decision}",
+            f"Summary: {report.summary}",
+            f"Repo root: {report.repo_root}",
+            f"Default mode: {report.default_mode}",
+            (
+                f"Inputs: reads={len(report.inputs['read_paths'])}, writes={len(report.inputs['write_paths'])}, "
+                f"commands={len(report.inputs['commands'])}, claims={len(report.inputs.get('claims', []))}"
+            ),
+            f"Violations: {report.violation_count} total ({report.blocking_violation_count} blocking)",
+        ]
     )
     if report.next_action:
-        print(f"Recommended next action: {report.next_action}")
+        lines.append(f"Recommended next action: {report.next_action}")
     for violation in report.violations:
-        print(f"- [{violation.mode}] {violation.rule_id} ({violation.kind}): {violation.message}")
-        print(f"  why: {violation.explanation}")
-        print(f"  next step: {violation.recommended_action}")
+        lines.append(f"- [{violation.mode}] {violation.rule_id} ({violation.kind}): {violation.message}")
+        lines.append(f"  why: {violation.explanation}")
+        lines.append(f"  next step: {violation.recommended_action}")
         if violation.matched_paths:
-            print(f"  matched paths: {', '.join(violation.matched_paths)}")
+            lines.append(f"  matched paths: {', '.join(violation.matched_paths)}")
         if violation.required_paths:
-            print(f"  required reads: {', '.join(violation.required_paths)}")
+            lines.append(f"  required reads: {', '.join(violation.required_paths)}")
         if violation.required_commands:
-            print(f"  required commands: {', '.join(violation.required_commands)}")
+            lines.append(f"  required commands: {', '.join(violation.required_commands)}")
+    return "\n".join(lines)
+
 
 
 def _load_cli_event_payload(args) -> dict[str, list[str]] | None:
@@ -308,11 +338,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "compile":
             compiled = compile_repo_policy(Path(args.repo))
-            _print_compile_result(compiled, args.json_output)
+            _output_text(_render_compile_result(compiled, args.json_output), args.output_path)
             return 0
         if args.command == "doctor":
             report = doctor_repo_policy(Path(args.repo))
-            _print_doctor_result(report, args.json_output)
+            _output_text(_render_doctor_result(report, args.json_output), args.output_path)
             return 1 if report.errors else 0
         if args.command == "check":
             report = check_repo_policy(
@@ -322,7 +352,7 @@ def main(argv: list[str] | None = None) -> int:
                 commands=args.commands,
                 event_payload=_load_cli_event_payload(args),
             )
-            _print_check_result(report, args.json_output)
+            _output_text(_render_check_result(report, args.json_output), args.output_path)
             return 2 if report.blocking_violation_count else 0
         if args.command == "ci":
             write_paths, git_metadata = collect_git_write_paths(
@@ -338,21 +368,23 @@ def main(argv: list[str] | None = None) -> int:
                 commands=args.commands,
                 event_payload=_load_cli_event_payload(args),
             )
-            _print_check_result(report, args.json_output, git_metadata=git_metadata)
+            _output_text(_render_check_result(report, args.json_output, git_metadata=git_metadata), args.output_path)
             return 2 if report.blocking_violation_count else 0
         if args.command == "explain":
             payload = _load_explain_payload(args)
             if args.json_output:
-                print(json.dumps(payload, indent=2, sort_keys=True))
+                rendered = json.dumps(payload, indent=2, sort_keys=True)
             else:
-                print(render_check_report(payload, format=args.format))
+                rendered = render_check_report(payload, format=args.format)
+            _output_text(rendered, args.output_path)
             return 0
         if args.command == "fix":
             payload = _load_fix_payload(args)
             if args.json_output:
-                print(json.dumps(payload, indent=2, sort_keys=True))
+                rendered = json.dumps(payload, indent=2, sort_keys=True)
             else:
-                print(render_fix_plan(payload, format=args.format))
+                rendered = render_fix_plan(payload, format=args.format)
+            _output_text(rendered, args.output_path)
             return 0
     except Exception as exc:
         if getattr(args, "json_output", False):

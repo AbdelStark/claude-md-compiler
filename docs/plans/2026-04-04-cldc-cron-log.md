@@ -244,3 +244,23 @@
   - Commit shipped on `main` with message `fix: polish remediation packaging and contracts`.
 - **Next highest-leverage task**
   - Push the last production-grade pass on docs/spec alignment: add a dedicated end-to-end saved-artifact workflow example (`check --json` → `explain` / `fix`) and tighten any remaining schema/backwards-compatibility edges before the final shipping iterations.
+
+## Iteration 13 — SHIPPING FEATURES
+- **What changed**
+  - Added a consistent `--output <path>` flag across every CLI command so CLDC can publish emitted JSON or rendered text directly to disk while still printing the same content to stdout.
+  - Refactored command rendering in `src/cldc/cli/main.py` so compile/doctor/check/ci/explain/fix now share one file-export path instead of ad hoc terminal-only printing.
+  - Shipped the missing end-to-end saved-artifact workflow for real operators: `cldc check --json --output` can now publish a reusable policy report artifact that `cldc explain` and `cldc fix` can consume in later steps without shell redirection.
+  - Expanded CLI regression coverage for blocking report export plus saved-report explanation/fix export round-trips, including automatic parent-directory creation.
+  - Updated `README.md` with concrete saved-artifact workflow commands and explicit `--output` behavior so the documented product shape now matches the shipped CLI.
+- **Verification run**
+  - `python -m pytest -q` → `59 passed`
+  - `python -m pip install -e .` → success
+  - `python -m build` → success (sdist + wheel)
+  - Disposable workflow check: `cldc check <tmp-repo> --write generated/output.json --json --output <tmp>/artifacts/policy-report.json` produced a saved blocking report artifact, and follow-up `cldc explain ... --output <tmp>/artifacts/policy-explanation.md` / `cldc fix ... --output <tmp>/artifacts/policy-fix-plan.json` produced the expected saved explanation + remediation artifacts.
+- **Current state of project**
+  - The CLI now covers the full saved-artifact handoff loop promised by the product spec's “report publishing and file export” shell responsibilities instead of requiring shell redirection glue around stdout.
+  - CI jobs and agent wrappers can publish stable report/explanation/fix-plan artifacts with one flag and then reuse them in downstream review or remediation steps.
+  - Test coverage grew from 57 to 59 passing tests while editable-install and build validation stayed green.
+  - Commit should ship on `main` with message `feat: add cli output export for saved artifact workflows`.
+- **Next highest-leverage task**
+  - Do the final quality/polish pass on artifact ergonomics and release confidence: tighten any remaining export/backwards-compatibility edges, and make sure the final README/spec language reflects the now-complete saved-artifact workflow cleanly.

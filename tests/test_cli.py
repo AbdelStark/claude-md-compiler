@@ -755,6 +755,117 @@ def test_cli_fix_command_rejects_mixed_saved_report_and_runtime_inputs(tmp_path)
 
 
 
+def test_cli_check_command_writes_json_report_to_output_file(tmp_path):
+    target = tmp_path / 'repo'
+    _copy_fixture_repo(target)
+    output_path = tmp_path / 'artifacts' / 'policy-report.json'
+
+    compile_result = subprocess.run(
+        [sys.executable, '-m', 'cldc.cli.main', 'compile', str(target)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert compile_result.returncode == 0, compile_result.stderr
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            '-m', 'cldc.cli.main', 'check', str(target),
+            '--write', 'generated/output.json',
+            '--json',
+            '--output', str(output_path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+
+    assert result.returncode == 2, result.stderr
+    assert output_path.exists()
+    stdout_payload = json.loads(result.stdout)
+    file_payload = json.loads(output_path.read_text())
+    assert stdout_payload == file_payload
+    assert stdout_payload['decision'] == 'block'
+    assert stdout_payload['violations'][0]['rule_id'] == 'generated-lock'
+
+
+
+def test_cli_explain_and_fix_support_saved_artifact_export(tmp_path):
+    target = tmp_path / 'repo'
+    _copy_fixture_repo(target)
+    report_path = tmp_path / 'artifacts' / 'policy-report.json'
+    explain_path = tmp_path / 'artifacts' / 'explain.md'
+    fix_path = tmp_path / 'artifacts' / 'fix-plan.json'
+
+    compile_result = subprocess.run(
+        [sys.executable, '-m', 'cldc.cli.main', 'compile', str(target)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert compile_result.returncode == 0, compile_result.stderr
+
+    check_result = subprocess.run(
+        [
+            sys.executable,
+            '-m', 'cldc.cli.main', 'check', str(target),
+            '--write', 'generated/output.json',
+            '--json',
+            '--output', str(report_path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert check_result.returncode == 2, check_result.stderr
+    assert report_path.exists()
+
+    explain_result = subprocess.run(
+        [
+            sys.executable,
+            '-m', 'cldc.cli.main', 'explain', str(target),
+            '--report-file', str(report_path),
+            '--format', 'markdown',
+            '--output', str(explain_path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert explain_result.returncode == 0, explain_result.stderr
+    assert explain_path.exists()
+    assert explain_path.read_text() == explain_result.stdout
+    assert '# Policy Explanation' in explain_result.stdout
+
+    fix_result = subprocess.run(
+        [
+            sys.executable,
+            '-m', 'cldc.cli.main', 'fix', str(target),
+            '--report-file', str(report_path),
+            '--json',
+            '--output', str(fix_path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert fix_result.returncode == 0, fix_result.stderr
+    assert fix_path.exists()
+    stdout_payload = json.loads(fix_result.stdout)
+    file_payload = json.loads(fix_path.read_text())
+    assert stdout_payload == file_payload
+    assert stdout_payload['$schema'] == FIX_PLAN_SCHEMA
+    assert stdout_payload['remediation_count'] == 1
+
+
+
 def test_cli_help_exposes_version_and_absolute_path_support():
     result = subprocess.run(
         [sys.executable, '-m', 'cldc.cli.main', 'check', '--help'],
@@ -768,6 +879,7 @@ def test_cli_help_exposes_version_and_absolute_path_support():
     assert 'repo-relative or absolute' in result.stdout
     assert '--events-file' in result.stdout
     assert '--stdin-json' in result.stdout
+    assert '--output' in result.stdout
     assert 'discovered' in result.stdout
 
     ci_help = subprocess.run(
@@ -781,6 +893,7 @@ def test_cli_help_exposes_version_and_absolute_path_support():
     assert '--staged' in ci_help.stdout
     assert '--base' in ci_help.stdout
     assert '--head' in ci_help.stdout
+    assert '--output' in ci_help.stdout
 
     explain_help = subprocess.run(
         [sys.executable, '-m', 'cldc.cli.main', 'explain', '--help'],
@@ -793,6 +906,7 @@ def test_cli_help_exposes_version_and_absolute_path_support():
     assert '--report-file' in explain_help.stdout
     assert '--stdin-report' in explain_help.stdout
     assert '--format' in explain_help.stdout
+    assert '--output' in explain_help.stdout
 
     fix_help = subprocess.run(
         [sys.executable, '-m', 'cldc.cli.main', 'fix', '--help'],
@@ -806,6 +920,7 @@ def test_cli_help_exposes_version_and_absolute_path_support():
     assert '--stdin-report' in fix_help.stdout
     assert '--format' in fix_help.stdout
     assert '--events-file' in fix_help.stdout
+    assert '--output' in fix_help.stdout
 
     version_result = subprocess.run(
         [sys.executable, '-m', 'cldc.cli.main', '--version'],
