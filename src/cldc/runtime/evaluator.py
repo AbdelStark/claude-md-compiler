@@ -7,7 +7,7 @@ from json import JSONDecodeError
 from pathlib import Path
 from typing import Any
 
-from cldc.compiler.policy_compiler import LOCKFILE_FORMAT_VERSION, LOCKFILE_SCHEMA
+from cldc.compiler.policy_compiler import LOCKFILE_FORMAT_VERSION, LOCKFILE_SCHEMA, _compute_source_digest
 from cldc.ingest.discovery import LOCKFILE_PATH, discover_policy_repo
 from cldc.ingest.source_loader import load_policy_sources
 from cldc.parser.rule_parser import parse_rule_documents
@@ -174,6 +174,17 @@ def _validate_lockfile_freshness(repo_root: Path, payload: dict[str, Any]) -> No
     if payload["rule_count"] != len(parsed.rules):
         raise ValueError(
             "compiled lockfile rule_count does not match the current policy sources; re-run `cldc compile`"
+        )
+
+    current_source_digest = _compute_source_digest(bundle)
+    lockfile_source_digest = payload.get("source_digest")
+    if not isinstance(lockfile_source_digest, str) or len(lockfile_source_digest) != 64:
+        raise ValueError(
+            "compiled lockfile source_digest is missing or invalid; re-run `cldc compile` to refresh it"
+        )
+    if lockfile_source_digest != current_source_digest:
+        raise ValueError(
+            "compiled lockfile source_digest does not match the current policy sources; re-run `cldc compile`"
         )
 
 

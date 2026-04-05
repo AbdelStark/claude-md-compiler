@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+import hashlib
 import json
 from json import JSONDecodeError
 from pathlib import Path
@@ -20,6 +21,7 @@ class CompiledPolicy:
     lockfile_path: str
     compiler_version: str
     format_version: str
+    source_digest: str
     default_mode: str
     rule_count: int
     source_count: int
@@ -38,10 +40,12 @@ class DoctorReport:
     source_count: int
     rule_count: int
     default_mode: str | None
+    source_digest: str | None
     lockfile_path: str
     lockfile_exists: bool
     lockfile_schema: str | None
     lockfile_format_version: str | None
+    lockfile_source_digest: str | None
     warnings: list[str]
     errors: list[str]
     next_action: str | None
@@ -51,7 +55,18 @@ class DoctorReport:
         return asdict(self)
 
 
+def _compute_source_digest(bundle) -> str:
+    canonical_sources = {
+        "source_precedence": SOURCE_PRECEDENCE,
+        "sources": [source.to_dict() for source in bundle.sources],
+    }
+    canonical_json = json.dumps(canonical_sources, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
+
+
+
 def _build_lock_payload(repo_root: Path, bundle, parsed) -> dict[str, Any]:
+    source_digest = _compute_source_digest(bundle)
     return {
         "$schema": LOCKFILE_SCHEMA,
         "compiler_version": __version__,
@@ -60,6 +75,7 @@ def _build_lock_payload(repo_root: Path, bundle, parsed) -> dict[str, Any]:
         "default_mode": parsed.default_mode,
         "rule_count": len(parsed.rules),
         "source_count": len(bundle.sources),
+        "source_digest": source_digest,
         "source_precedence": SOURCE_PRECEDENCE,
         "discovery": bundle.discovery.to_dict(),
         "sources": [source.to_dict() for source in bundle.sources],
@@ -83,6 +99,7 @@ def compile_repo_policy(repo_root: Path | str) -> CompiledPolicy:
         lockfile_path=".claude/policy.lock.json",
         compiler_version=__version__,
         format_version=LOCKFILE_FORMAT_VERSION,
+        source_digest=payload["source_digest"],
         default_mode=parsed.default_mode,
         rule_count=len(parsed.rules),
         source_count=len(bundle.sources),
@@ -104,21 +121,23 @@ def _validate_existing_lockfile(
     *,
     repo_root: Path,
     expected_rule_count: int,
+    expected_source_digest: str,
     errors: list[str],
     warnings: list[str],
-) -> tuple[str | None, str | None]:
+) -> tuple[str | None, str | None, str | None]:
     try:
         payload = json.loads(lockfile.read_text())
     except JSONDecodeError as exc:
         errors.append(f"lockfile is not valid JSON: {exc}")
-        return None, None
+        return None, None, None
 
     if not isinstance(payload, dict):
         errors.append("lockfile must contain a JSON object at the top level")
-        return None, None
+        return None, None, None
 
     lockfile_schema = payload.get("$schema")
     lockfile_format_version = payload.get("format_version")
+    lockfile_source_digest = payload.get("source_digest")
 
     if lockfile_schema != LOCKFILE_SCHEMA:
         warnings.append(
@@ -132,10 +151,17 @@ def _validate_existing_lockfile(
         warnings.append("lockfile repo_root does not match the discovered repository root")
     if payload.get("rule_count") != expected_rule_count:
         warnings.append("lockfile rule_count does not match the currently parsed policy sources")
+    if not isinstance(lockfile_source_digest, str) or len(lockfile_source_digest) != 64:
+        warnings.append(
+            "lockfile source_digest is missing or invalid; re-run `cldc compile` to refresh it"
+        )
+    elif lockfile_source_digest != expected_source_digest:
+        warnings.append("lockfile source_digest does not match the current policy sources")
 
     return (
         lockfile_schema if isinstance(lockfile_schema, str) else None,
         lockfile_format_version if isinstance(lockfile_format_version, str) else None,
+        lockfile_source_digest if isinstance(lockfile_source_digest, str) else None,
     )
 
 
@@ -165,10 +191,12 @@ def doctor_repo_policy(repo_root: Path | str) -> DoctorReport:
             source_count=0,
             rule_count=0,
             default_mode=None,
+            source_digest=None,
             lockfile_path=".claude/policy.lock.json",
             lockfile_exists=False,
             lockfile_schema=None,
             lockfile_format_version=None,
+            lockfile_source_digest=None,
             warnings=[],
             errors=errors,
             next_action=_recommend_next_action(errors, []),
@@ -182,10 +210,12 @@ def doctor_repo_policy(repo_root: Path | str) -> DoctorReport:
             source_count=0,
             rule_count=0,
             default_mode=None,
+            source_digest=None,
             lockfile_path=".claude/policy.lock.json",
             lockfile_exists=False,
             lockfile_schema=None,
             lockfile_format_version=None,
+            lockfile_source_digest=None,
             warnings=[],
             errors=errors,
             next_action=_recommend_next_action(errors, []),
@@ -197,21 +227,25 @@ def doctor_repo_policy(repo_root: Path | str) -> DoctorReport:
     lockfile = root / ".claude" / "policy.lock.json"
     lockfile_schema: str | None = None
     lockfile_format_version: str | None = None
+    lockfile_source_digest: str | None = None
+    source_digest: str | None = None
 
     try:
         parsed = parse_rule_documents(bundle)
         default_mode = parsed.default_mode
         rule_count = len(parsed.rules)
+        source_digest = _compute_source_digest(bundle)
     except Exception as exc:
         errors.append(str(exc))
         default_mode = None
         rule_count = 0
     else:
         if lockfile.exists():
-            lockfile_schema, lockfile_format_version = _validate_existing_lockfile(
+            lockfile_schema, lockfile_format_version, lockfile_source_digest = _validate_existing_lockfile(
                 lockfile,
                 repo_root=root,
                 expected_rule_count=rule_count,
+                expected_source_digest=source_digest,
                 errors=errors,
                 warnings=warnings,
             )
@@ -230,10 +264,12 @@ def doctor_repo_policy(repo_root: Path | str) -> DoctorReport:
         source_count=len(bundle.sources),
         rule_count=rule_count,
         default_mode=default_mode,
+        source_digest=source_digest,
         lockfile_path=".claude/policy.lock.json",
         lockfile_exists=lockfile.exists(),
         lockfile_schema=lockfile_schema,
         lockfile_format_version=lockfile_format_version,
+        lockfile_source_digest=lockfile_source_digest,
         warnings=warnings,
         errors=errors,
         next_action=next_action,

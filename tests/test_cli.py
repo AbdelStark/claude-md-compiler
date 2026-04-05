@@ -52,6 +52,7 @@ def test_cli_doctor_command_reports_repo_health(tmp_path):
     payload = json.loads(result.stdout)
     assert payload['discovered'] is True
     assert payload['rule_count'] == 1
+    assert isinstance(payload['source_digest'], str)
     assert any('compiled lockfile not found' in warning for warning in payload['warnings'])
 
 

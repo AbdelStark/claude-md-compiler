@@ -96,6 +96,7 @@ def test_compiler_emits_lockfile_schema_version(tmp_path):
 
     assert compiled.format_version == '1'
     assert payload['$schema'] == 'https://cldc.dev/schemas/policy-lock/v1'
+    assert compiled.source_digest == payload['source_digest']
 
 
 def test_doctor_flags_stale_lockfile(tmp_path):
@@ -113,7 +114,9 @@ def test_doctor_flags_stale_lockfile(tmp_path):
     report = doctor_repo_policy(tmp_path)
 
     assert report.errors == []
-    assert any('stale' in warning for warning in report.warnings)
+    assert report.source_digest is not None
+    assert report.lockfile_source_digest is not None
+    assert any('stale' in warning or 'source_digest' in warning for warning in report.warnings)
     assert report.next_action == 'Re-run `cldc compile` to refresh the lockfile, then commit the updated artifact.'
 
 
@@ -135,9 +138,34 @@ def test_doctor_reports_lockfile_schema_drift(tmp_path):
     assert report.errors == []
     assert report.lockfile_schema == 'https://cldc.dev/schemas/policy-lock/v0'
     assert report.lockfile_format_version == '0'
+    assert report.lockfile_source_digest is not None
     assert any('schema does not match' in warning for warning in report.warnings)
     assert any('format_version does not match' in warning for warning in report.warnings)
     assert any('rule_count does not match' in warning for warning in report.warnings)
+    assert report.next_action == 'Re-run `cldc compile` to refresh the lockfile, then commit the updated artifact.'
+
+
+
+def test_doctor_reports_content_drift_even_when_mtime_and_rule_count_match(tmp_path):
+    claude_path = tmp_path / 'CLAUDE.md'
+    claude_path.write_text(
+        "```cldc\nrules:\n  - id: deny\n    kind: deny_write\n    paths: ['generated/**']\n    message: stop\n```\n"
+    )
+    compile_repo_policy(tmp_path)
+    lockfile = tmp_path / '.claude' / 'policy.lock.json'
+    lockfile_mtime = lockfile.stat().st_mtime
+
+    claude_path.write_text(
+        "```cldc\nrules:\n  - id: deny\n    kind: deny_write\n    paths: ['generated/**']\n    message: changed without touching rule count\n```\n"
+    )
+    os.utime(claude_path, (lockfile_mtime - 5, lockfile_mtime - 5))
+
+    report = doctor_repo_policy(tmp_path)
+
+    assert report.errors == []
+    assert report.source_digest is not None
+    assert report.lockfile_source_digest is not None
+    assert any('source_digest does not match' in warning for warning in report.warnings)
     assert report.next_action == 'Re-run `cldc compile` to refresh the lockfile, then commit the updated artifact.'
 
 

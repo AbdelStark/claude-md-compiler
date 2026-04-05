@@ -99,3 +99,25 @@
   - Test coverage grew from 33 to 39 passing tests, with direct coverage of the new event schema and CLI ingestion modes.
 - **Next highest-leverage task**
   - Ship the first dedicated `cldc ci` workflow that derives changed files from git (`--staged` and/or `--base`/`--head`) and feeds them into `cldc check`, turning the current policy engine into a one-command CI entrypoint.
+
+## Iteration 6 — QUALITY / POLISH / PRODUCTION-GRADE
+- **What changed**
+  - Hardened lockfile freshness validation by adding a deterministic `source_digest` fingerprint over the canonical policy source bundle and embedding it in compiled lockfiles + compile JSON output.
+  - Taught both `cldc doctor` and `cldc check` to detect content drift even when timestamps and rule counts are misleading, closing a real false-trust gap in CI and local enforcement.
+  - Enriched doctor output with current + lockfile source digests so operators can see exactly which artifact identity they are comparing.
+  - Expanded regression coverage for digest emission, digest-aware doctor metadata, and drift cases where policy content changes but lockfile mtimes are intentionally backdated.
+  - Updated README shipping guidance to document source-digest enforcement and the stronger stale-lockfile guarantees.
+- **Verification run**
+  - `python -m pytest -q` → `41 passed`
+  - `python -m pip install -e .` → success
+  - `python -m build` → success (sdist + wheel)
+  - `cldc compile <tmp-repo> --json` → success, includes `source_digest`
+  - `cldc doctor <tmp-repo> --json` → success, includes both `source_digest` and `lockfile_source_digest`
+  - `cldc check <tmp-repo> --write generated/output.json --json` after backdated policy-content drift → exit code `1`, JSON error `compiled lockfile source_digest does not match the current policy sources; re-run \`cldc compile\``
+- **Current state of project**
+  - The lockfile is now materially harder to trust incorrectly: timestamp-only freshness checks are no longer the sole guardrail.
+  - Packaging verification now covers editable install plus wheel/sdist generation, which improves release readiness for the current CLI slice.
+  - Test coverage grew from 39 to 41 passing tests, including a direct regression for content drift with preserved rule count and older source mtimes.
+  - The repo still lacks the dedicated `cldc ci` command, but the underlying checker is more trustworthy for that next integration step.
+- **Next highest-leverage task**
+  - Ship `cldc ci` as the first one-command git-aware entrypoint (`--staged`, `--base`, `--head`) that derives changed files from git, feeds them into `cldc check`, and preserves the current JSON/error contracts for CI automation.

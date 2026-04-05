@@ -23,6 +23,8 @@ def test_compile_repo_policy_writes_lockfile(tmp_path):
     assert payload['$schema'] == 'https://cldc.dev/schemas/policy-lock/v1'
     assert payload['compiler_version'] == '0.1.0'
     assert payload['default_mode'] == 'warn'
+    assert isinstance(payload['source_digest'], str)
+    assert len(payload['source_digest']) == 64
     assert payload['source_precedence'] == [
         'claude_md',
         'inline_block',
@@ -36,6 +38,7 @@ def test_compile_repo_policy_writes_lockfile(tmp_path):
     ]
     assert compiled.lockfile_path == '.claude/policy.lock.json'
     assert compiled.default_mode == 'warn'
+    assert compiled.source_digest == payload['source_digest']
     assert compiled.source_count == 4
     assert compiled.source_paths == [
         'CLAUDE.md',

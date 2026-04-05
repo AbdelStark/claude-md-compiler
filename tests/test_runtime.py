@@ -180,5 +180,24 @@ def test_check_repo_policy_rejects_stale_lockfile(tmp_path):
     )
     os.utime(claude_path, (lockfile_mtime + 5, lockfile_mtime + 5))
 
-    with pytest.raises(ValueError, match='appears stale'):
+    with pytest.raises(ValueError, match='stale|source_digest'):
+        check_repo_policy(tmp_path, write_paths=['generated/output.json'])
+
+
+
+def test_check_repo_policy_rejects_content_drift_even_when_mtime_and_rule_count_match(tmp_path):
+    claude_path = tmp_path / 'CLAUDE.md'
+    claude_path.write_text(
+        "```cldc\nrules:\n  - id: deny\n    kind: deny_write\n    paths: ['generated/**']\n    message: stop\n```\n"
+    )
+    compile_repo_policy(tmp_path)
+    lockfile = tmp_path / '.claude' / 'policy.lock.json'
+    lockfile_mtime = lockfile.stat().st_mtime
+
+    claude_path.write_text(
+        "```cldc\nrules:\n  - id: deny\n    kind: deny_write\n    paths: ['generated/**']\n    message: changed without touching rule count\n```\n"
+    )
+    os.utime(claude_path, (lockfile_mtime - 5, lockfile_mtime - 5))
+
+    with pytest.raises(ValueError, match='source_digest'):
         check_repo_policy(tmp_path, write_paths=['generated/output.json'])

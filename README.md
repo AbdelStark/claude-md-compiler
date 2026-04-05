@@ -33,12 +33,12 @@ cldc check . --write generated/output.json --json
 cldc doctor . --json
 ```
 
-`cldc doctor` validates more than file presence: it inspects the existing lockfile for malformed JSON, schema / format drift, rule-count mismatches, repo-root mismatches, and stale artifacts, then returns a single recommended next action so operators know what to do next.
+`cldc doctor` validates more than file presence: it inspects the existing lockfile for malformed JSON, schema / format drift, rule-count mismatches, repo-root mismatches, stale artifacts, and full source-digest drift so operators can catch content changes even when timestamps and rule counts still look plausible. It also returns a single recommended next action so operators know what to do next.
 
-`cldc check` loads the compiled lockfile and evaluates runtime evidence against the compiled policy. The current MVP covers `deny_write`, `require_read`, and `require_command`, emits stable JSON for automation, accepts both repo-relative and absolute in-repo paths, supports batch execution inputs from `--events-file` and `--stdin-json`, and refuses to enforce stale or schema-drifted lockfiles so CI does not silently trust outdated policy artifacts.
+`cldc check` loads the compiled lockfile and evaluates runtime evidence against the compiled policy. The current MVP covers `deny_write`, `require_read`, and `require_command`, emits stable JSON for automation, accepts both repo-relative and absolute in-repo paths, supports batch execution inputs from `--events-file` and `--stdin-json`, and refuses to enforce stale, schema-drifted, or source-drifted lockfiles so CI does not silently trust outdated policy artifacts.
 
 ## Shipping notes
-- `cldc compile` must be rerun whenever policy sources change.
+- `cldc compile` must be rerun whenever policy sources change; the lockfile now carries a source digest and `doctor` / `check` will reject content drift even if timestamps are misleading.
 - `cldc check` expects paths to stay inside the discovered repo root and will reject paths that escape it.
 - `cldc check --events-file` and `cldc check --stdin-json` accept JSON shaped like `{"read_paths":[],"write_paths":[],"commands":[],"claims":[],"events":[...]}` where each event is a `read`, `write`, `command`, or `claim` object.
 - `cldc doctor` is the fastest preflight when CI or local runs report lockfile drift.

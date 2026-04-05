@@ -62,6 +62,7 @@ def _print_compile_result(compiled, json_output: bool) -> None:
         f"{compiled.lockfile_path} for {compiled.repo_root}"
     )
     print(f"Default mode: {compiled.default_mode}")
+    print(f"Source digest: {compiled.source_digest}")
     if compiled.warnings:
         print("Discovery warnings:")
         for warning in compiled.warnings:
@@ -79,15 +80,19 @@ def _print_doctor_result(report, json_output: bool) -> None:
     print(f"Sources: {report.source_count}")
     print(f"Rules: {report.rule_count}")
     print(f"Default mode: {report.default_mode or 'n/a'}")
+    if report.source_digest:
+        print(f"Current source digest: {report.source_digest}")
     print(
         f"Lockfile: {report.lockfile_path} ({'present' if report.lockfile_exists else 'missing'})"
     )
-    if report.lockfile_schema or report.lockfile_format_version:
-        print(
-            "Lockfile metadata: "
-            f"schema={report.lockfile_schema or 'unknown'}, "
-            f"format_version={report.lockfile_format_version or 'unknown'}"
-        )
+    if report.lockfile_schema or report.lockfile_format_version or report.lockfile_source_digest:
+        metadata_bits = [
+            f"schema={report.lockfile_schema or 'unknown'}",
+            f"format_version={report.lockfile_format_version or 'unknown'}",
+        ]
+        if report.lockfile_source_digest:
+            metadata_bits.append(f"source_digest={report.lockfile_source_digest}")
+        print("Lockfile metadata: " + ", ".join(metadata_bits))
     if report.warnings:
         print("Warnings:")
         for warning in report.warnings:
