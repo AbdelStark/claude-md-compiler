@@ -3,6 +3,8 @@ from pathlib import Path
 import subprocess
 import sys
 
+from cldc.runtime.report_schema import CHECK_REPORT_FORMAT_VERSION, CHECK_REPORT_SCHEMA
+
 
 PYTHONPATH_ENV = {'PYTHONPATH': str(Path(__file__).resolve().parents[1] / 'src')}
 
@@ -136,6 +138,8 @@ def test_cli_check_command_returns_json_violations(tmp_path):
 
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
+    assert payload['$schema'] == CHECK_REPORT_SCHEMA
+    assert payload['format_version'] == CHECK_REPORT_FORMAT_VERSION
     assert payload['ok'] is True
     assert payload['decision'] == 'warn'
     assert payload['summary'] == 'Policy check found 2 non-blocking violation(s).'
@@ -557,6 +561,59 @@ def test_cli_explain_command_renders_markdown_from_saved_report(tmp_path):
     assert '## Violations' in explain_result.stdout
     assert 'generated-lock' in explain_result.stdout
     assert 'Rule provenance' in explain_result.stdout
+
+
+def test_cli_explain_command_accepts_legacy_unversioned_saved_report(tmp_path):
+    target = tmp_path / 'repo'
+    _copy_fixture_repo(target)
+    report_path = tmp_path / 'legacy-report.json'
+
+    compile_result = subprocess.run(
+        [sys.executable, '-m', 'cldc.cli.main', 'compile', str(target)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert compile_result.returncode == 0, compile_result.stderr
+
+    check_result = subprocess.run(
+        [
+            sys.executable,
+            '-m', 'cldc.cli.main', 'check', str(target),
+            '--write', 'generated/output.json',
+            '--json',
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert check_result.returncode == 2, check_result.stderr
+    legacy_payload = json.loads(check_result.stdout)
+    legacy_payload.pop('$schema')
+    legacy_payload.pop('format_version')
+    report_path.write_text(json.dumps(legacy_payload))
+
+    explain_result = subprocess.run(
+        [
+            sys.executable,
+            '-m', 'cldc.cli.main', 'explain', str(target),
+            '--report-file', str(report_path),
+            '--json',
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+
+    assert explain_result.returncode == 0, explain_result.stderr
+    payload = json.loads(explain_result.stdout)
+    assert payload['$schema'] == CHECK_REPORT_SCHEMA
+    assert payload['format_version'] == CHECK_REPORT_FORMAT_VERSION
+    assert payload['decision'] == 'block'
+    assert payload['violations'][0]['rule_id'] == 'generated-lock'
 
 
 

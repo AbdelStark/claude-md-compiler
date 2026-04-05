@@ -8,6 +8,7 @@ from cldc.compiler.policy_compiler import compile_repo_policy
 from cldc.runtime.evaluator import check_repo_policy
 from cldc.runtime.events import load_execution_inputs
 from cldc.runtime.git import collect_git_write_paths
+from cldc.runtime.report_schema import CHECK_REPORT_FORMAT_VERSION, CHECK_REPORT_SCHEMA
 
 
 @pytest.fixture
@@ -46,6 +47,10 @@ def test_check_repo_policy_reports_warn_only_violations(compiled_repo):
     assert require_command.required_commands == ['pytest -q']
     assert require_command.recommended_action == 'Run one of the required commands before finishing: pytest -q.'
     assert report.inputs['claims'] == []
+
+    payload = report.to_dict()
+    assert payload['$schema'] == CHECK_REPORT_SCHEMA
+    assert payload['format_version'] == CHECK_REPORT_FORMAT_VERSION
 
 
 def test_check_repo_policy_passes_when_required_inputs_are_present(compiled_repo):

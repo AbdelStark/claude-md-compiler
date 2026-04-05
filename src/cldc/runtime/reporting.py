@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from cldc.runtime.report_schema import CHECK_REPORT_FORMAT_VERSION, CHECK_REPORT_SCHEMA
+
 
 ALLOWED_DECISIONS = {"pass", "warn", "block"}
 
@@ -113,6 +115,18 @@ def load_check_report(payload: Any) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError('policy report payload must be a JSON object')
 
+    schema = payload.get('$schema')
+    if schema is not None and schema != CHECK_REPORT_SCHEMA:
+        raise ValueError(
+            "report field '$schema' does not match this explainer; regenerate the report with the current `cldc` version"
+        )
+
+    format_version = payload.get('format_version')
+    if format_version is not None and format_version != CHECK_REPORT_FORMAT_VERSION:
+        raise ValueError(
+            "report field 'format_version' does not match this explainer; regenerate the report with the current `cldc` version"
+        )
+
     decision = _require_string(payload.get('decision'), field='decision')
     if decision not in ALLOWED_DECISIONS:
         raise ValueError(f"report field 'decision' must be one of: {', '.join(sorted(ALLOWED_DECISIONS))}")
@@ -122,6 +136,8 @@ def load_check_report(payload: Any) -> dict[str, Any]:
         raise ValueError("report field 'violations' must be a list")
 
     normalized = {
+        '$schema': CHECK_REPORT_SCHEMA,
+        'format_version': CHECK_REPORT_FORMAT_VERSION,
         'ok': _require_bool(payload.get('ok'), field='ok'),
         'repo_root': _require_string(payload.get('repo_root'), field='repo_root'),
         'lockfile_path': _require_string(payload.get('lockfile_path'), field='lockfile_path'),

@@ -44,7 +44,7 @@ cldc doctor . --json
 
 `cldc ci` is the first git-aware wrapper around `cldc check`. It derives write paths from either `git diff --cached --name-only` (`--staged`) or `git diff --name-only <base>...<head>` (`--base` / `--head`), preserves the existing decision and violation JSON shape, appends git provenance, and now inherits the same explainable summary / next-action reporting as direct `cldc check` runs.
 
-`cldc explain` turns either fresh runtime evidence or a previously saved JSON policy report into a reviewer-friendly explanation with rule provenance, rationale, and recommended next steps. Use it when you want Markdown/text output for PR comments, CI summaries, or operator handoffs without re-implementing the report rendering yourself.
+`cldc explain` turns either fresh runtime evidence or a previously saved JSON policy report into a reviewer-friendly explanation with rule provenance, rationale, and recommended next steps. Policy report JSON emitted by `cldc check`, `cldc ci`, and `cldc explain --json` now carries its own `$schema` and `format_version` so saved artifacts stay explicit and machine-validated across releases, while `cldc explain` still accepts legacy unversioned reports generated before this contract landed.
 
 ## Shipping notes
 - `cldc compile` must be rerun whenever policy sources change; the lockfile now carries a source digest and `doctor` / `check` will reject content drift even if timestamps are misleading.
@@ -52,4 +52,5 @@ cldc doctor . --json
 - `cldc check --events-file` and `cldc check --stdin-json` accept JSON shaped like `{"read_paths":[],"write_paths":[],"commands":[],"claims":[],"events":[...]}` where each event is a `read`, `write`, `command`, or `claim` object.
 - `cldc ci` requires either `--staged` or `--base` (optionally with `--head`) so git provenance stays explicit instead of relying on hidden diff heuristics.
 - `cldc explain` can either render fresh evidence inputs or a saved JSON report artifact, but it intentionally refuses to mix those modes in one invocation.
+- Saved policy report artifacts now include a top-level `$schema` plus `format_version`; `cldc explain` tolerates older unversioned artifacts for backwards compatibility, but new automation should keep the versioned fields intact.
 - `cldc doctor` is the fastest preflight when CI or local runs report lockfile drift.

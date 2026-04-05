@@ -12,6 +12,7 @@ from cldc.ingest.discovery import LOCKFILE_PATH, discover_policy_repo
 from cldc.ingest.source_loader import load_policy_sources
 from cldc.parser.rule_parser import parse_rule_documents
 from cldc.runtime.events import EMPTY_EXECUTION_INPUTS, load_execution_inputs
+from cldc.runtime.report_schema import CHECK_REPORT_FORMAT_VERSION, CHECK_REPORT_SCHEMA
 
 BLOCKING_MODES = {"block", "fix"}
 NON_BLOCKING_MODES = {"observe", "warn"}
@@ -54,6 +55,8 @@ class CheckReport:
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "$schema": CHECK_REPORT_SCHEMA,
+            "format_version": CHECK_REPORT_FORMAT_VERSION,
             "ok": self.ok,
             "repo_root": self.repo_root,
             "lockfile_path": self.lockfile_path,

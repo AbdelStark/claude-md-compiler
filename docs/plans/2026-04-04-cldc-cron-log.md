@@ -184,3 +184,23 @@
   - Commit shipped on `main` with message `feat: add explain command for policy reports`.
 - **Next highest-leverage task**
   - Ship the first `cldc fix` / remediation slice so blocking or warning reports can produce machine-readable fix suggestions or templated follow-up actions instead of stopping at explanation alone.
+
+## Iteration 10 — QUALITY / POLISH / PRODUCTION-GRADE
+- **What changed**
+  - Added an explicit policy-report artifact contract with top-level `$schema` and `format_version` fields on every JSON report emitted by `cldc check`, `cldc ci`, and `cldc explain --json`.
+  - Centralized the report schema/version constants under `src/cldc/runtime/report_schema.py` so runtime emission and explain-time validation now share one source of truth.
+  - Hardened saved-report loading so `cldc explain` rejects mismatched report schema/version artifacts instead of silently trusting incompatible JSON, while still accepting legacy unversioned reports generated before this contract existed.
+  - Expanded runtime + CLI regression coverage for versioned report emission and legacy saved-report compatibility.
+  - Updated `README.md` so the documented explain/report flow now matches the new versioned artifact guarantee.
+- **Verification run**
+  - `python -m pytest -q` → `51 passed`
+  - `python -m pip install -e .` → success
+  - `python -m build` → success (sdist + wheel)
+  - `cldc check <tmp-repo> --write src/main.py --json` → success, emits `$schema=https://cldc.dev/schemas/policy-report/v1` and `format_version=1`
+- **Current state of project**
+  - Policy-report JSON is now explicitly versioned instead of relying on undocumented field shape, which closes a release-confidence gap called out by the product spec's “stable and versioned” JSON requirement.
+  - Saved reports are safer to carry across CI, PR comments, and handoff workflows because explain-time validation can now detect incompatible artifacts before rendering misleading output.
+  - Backwards compatibility remains intact for earlier saved reports that predate version metadata, reducing migration friction while still tightening the contract for all new automation.
+  - The repo now has 51 passing tests plus green editable-install and wheel/sdist verification for the current CLI slice.
+- **Next highest-leverage task**
+  - Ship the first `cldc fix` / remediation slice so blocking or warning reports can produce machine-readable fix suggestions or templated follow-up actions instead of stopping at explanation alone.
