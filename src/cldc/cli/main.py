@@ -9,6 +9,22 @@ from cldc import __version__
 from cldc.compiler.policy_compiler import compile_repo_policy, doctor_repo_policy
 from cldc.runtime.evaluator import check_repo_policy
 from cldc.runtime.events import EMPTY_EXECUTION_INPUTS, load_execution_inputs_file, load_execution_inputs_text
+from cldc.runtime.git import collect_git_write_paths
+
+
+def _add_json_flag(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--json", action="store_true", dest="json_output", help="Emit machine-readable JSON output")
+
+
+
+def _add_runtime_input_flags(parser: argparse.ArgumentParser, *, include_write: bool) -> None:
+    parser.add_argument("--read", action="append", default=[], dest="read_paths", help="Path read before editing; repeat for multiple paths")
+    if include_write:
+        parser.add_argument("--write", action="append", default=[], dest="write_paths", help="Path written or otherwise touched; repeat for multiple paths")
+    parser.add_argument("--command", action="append", default=[], dest="commands", help="Executed command string; repeat for multiple commands")
+    parser.add_argument("--events-file", dest="events_file", help="Load execution input JSON from a file and merge it with explicit runtime flags")
+    parser.add_argument("--stdin-json", action="store_true", dest="stdin_json", help="Load execution input JSON from stdin and merge it with explicit runtime flags")
+
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -25,7 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Parse CLAUDE.md, compiler config, and policy fragments into .claude/policy.lock.json.",
     )
     compile_parser.add_argument("repo", nargs="?", default=".", help="Repo root or any path inside the repo")
-    compile_parser.add_argument("--json", action="store_true", dest="json_output", help="Emit machine-readable JSON output")
+    _add_json_flag(compile_parser)
 
     doctor_parser = subparsers.add_parser(
         "doctor",
@@ -33,7 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Validate discovery, source parsing, and lockfile health for a repository policy.",
     )
     doctor_parser.add_argument("repo", nargs="?", default=".", help="Repo root or any path inside the repo")
-    doctor_parser.add_argument("--json", action="store_true", dest="json_output", help="Emit machine-readable JSON output")
+    _add_json_flag(doctor_parser)
 
     check_parser = subparsers.add_parser(
         "check",
@@ -44,12 +60,22 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     check_parser.add_argument("repo", nargs="?", default=".", help="Repo root or any path inside the repo")
-    check_parser.add_argument("--read", action="append", default=[], dest="read_paths", help="Path read before editing; repeat for multiple paths")
-    check_parser.add_argument("--write", action="append", default=[], dest="write_paths", help="Path written or otherwise touched; repeat for multiple paths")
-    check_parser.add_argument("--command", action="append", default=[], dest="commands", help="Executed command string; repeat for multiple commands")
-    check_parser.add_argument("--events-file", dest="events_file", help="Load execution input JSON from a file and merge it with explicit --read/--write/--command flags")
-    check_parser.add_argument("--stdin-json", action="store_true", dest="stdin_json", help="Load execution input JSON from stdin and merge it with explicit --read/--write/--command flags")
-    check_parser.add_argument("--json", action="store_true", dest="json_output", help="Emit machine-readable JSON output")
+    _add_runtime_input_flags(check_parser, include_write=True)
+    _add_json_flag(check_parser)
+
+    ci_parser = subparsers.add_parser(
+        "ci",
+        help="Derive changed files from git and evaluate them against the compiled policy",
+        description=(
+            "Collect changed files from git using staged changes or a base/head diff, then evaluate them with the compiled policy lockfile."
+        ),
+    )
+    ci_parser.add_argument("repo", nargs="?", default=".", help="Repo root or any path inside the repo")
+    ci_parser.add_argument("--staged", action="store_true", help="Evaluate files from `git diff --cached --name-only`")
+    ci_parser.add_argument("--base", help="Base git ref for a range diff (for example origin/main)")
+    ci_parser.add_argument("--head", help="Head git ref for a range diff (defaults to HEAD when --base is provided)")
+    _add_runtime_input_flags(ci_parser, include_write=False)
+    _add_json_flag(ci_parser)
     return parser
 
 
@@ -105,11 +131,27 @@ def _print_doctor_result(report, json_output: bool) -> None:
         print(f"Recommended next action: {report.next_action}")
 
 
-def _print_check_result(report, json_output: bool) -> None:
+def _check_payload(report, git_metadata: dict[str, object] | None = None) -> dict[str, object]:
+    payload = report.to_dict()
+    if git_metadata is not None:
+        payload['git'] = git_metadata
+    return payload
+
+
+
+def _print_check_result(report, json_output: bool, *, git_metadata: dict[str, object] | None = None) -> None:
     if json_output:
-        print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
+        print(json.dumps(_check_payload(report, git_metadata), indent=2, sort_keys=True))
         return
 
+    if git_metadata is not None:
+        if git_metadata.get('mode') == 'staged':
+            print(f"Git input: staged diff ({git_metadata.get('write_path_count', 0)} changed paths)")
+        else:
+            print(
+                f"Git input: {git_metadata.get('base')}...{git_metadata.get('head')} "
+                f"({git_metadata.get('write_path_count', 0)} changed paths)"
+            )
     print(f"Policy check: {report.decision}")
     print(f"Repo root: {report.repo_root}")
     print(f"Default mode: {report.default_mode}")
@@ -171,6 +213,22 @@ def main(argv: list[str] | None = None) -> int:
                 event_payload=_load_cli_event_payload(args),
             )
             _print_check_result(report, args.json_output)
+            return 2 if report.blocking_violation_count else 0
+        if args.command == "ci":
+            write_paths, git_metadata = collect_git_write_paths(
+                Path(args.repo),
+                staged=args.staged,
+                base=args.base,
+                head=args.head,
+            )
+            report = check_repo_policy(
+                Path(args.repo),
+                read_paths=args.read_paths,
+                write_paths=write_paths,
+                commands=args.commands,
+                event_payload=_load_cli_event_payload(args),
+            )
+            _print_check_result(report, args.json_output, git_metadata=git_metadata)
             return 2 if report.blocking_violation_count else 0
     except Exception as exc:
         if getattr(args, "json_output", False):

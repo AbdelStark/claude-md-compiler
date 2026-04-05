@@ -17,6 +17,26 @@ def _copy_fixture_repo(target: Path) -> None:
             destination.write_text(source.read_text())
 
 
+
+def _init_git_repo(target: Path) -> None:
+    commands = [
+        ['git', 'init'],
+        ['git', 'config', 'user.email', 'cldc-tests@example.com'],
+        ['git', 'config', 'user.name', 'CLDC Tests'],
+        ['git', 'add', '.'],
+        ['git', 'commit', '-m', 'baseline'],
+    ]
+    for command in commands:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=target,
+        )
+        assert result.returncode == 0, result.stderr
+
+
 def test_cli_compile_command(tmp_path):
     target = tmp_path / 'repo'
     _copy_fixture_repo(target)
@@ -269,6 +289,153 @@ def test_cli_check_command_reports_json_errors_for_bad_event_payload(tmp_path):
 
 
 
+def test_cli_ci_command_uses_staged_git_diff(tmp_path):
+    target = tmp_path / 'repo'
+    _copy_fixture_repo(target)
+
+    compile_result = subprocess.run(
+        [sys.executable, '-m', 'cldc.cli.main', 'compile', str(target)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert compile_result.returncode == 0, compile_result.stderr
+    _init_git_repo(target)
+
+    (target / 'src').mkdir(exist_ok=True)
+    (target / 'src' / 'main.py').write_text('print("changed")\n')
+    stage_result = subprocess.run(
+        ['git', 'add', 'src/main.py'],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=target,
+    )
+    assert stage_result.returncode == 0, stage_result.stderr
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            '-m', 'cldc.cli.main', 'ci', str(target),
+            '--staged',
+            '--json',
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload['decision'] == 'warn'
+    assert payload['inputs']['write_paths'] == ['src/main.py']
+    assert payload['git']['mode'] == 'staged'
+
+
+
+def test_cli_ci_command_uses_base_head_diff(tmp_path):
+    target = tmp_path / 'repo'
+    _copy_fixture_repo(target)
+
+    compile_result = subprocess.run(
+        [sys.executable, '-m', 'cldc.cli.main', 'compile', str(target)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert compile_result.returncode == 0, compile_result.stderr
+    _init_git_repo(target)
+
+    base_result = subprocess.run(
+        ['git', 'rev-parse', 'HEAD'],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=target,
+    )
+    assert base_result.returncode == 0, base_result.stderr
+    base_sha = base_result.stdout.strip()
+
+    generated = target / 'generated' / 'output.json'
+    generated.parent.mkdir(parents=True, exist_ok=True)
+    generated.write_text('{"status": "changed"}\n')
+    add_result = subprocess.run(
+        ['git', 'add', 'generated/output.json'],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=target,
+    )
+    assert add_result.returncode == 0, add_result.stderr
+    commit_result = subprocess.run(
+        ['git', 'commit', '-m', 'touch generated output'],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=target,
+    )
+    assert commit_result.returncode == 0, commit_result.stderr
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            '-m', 'cldc.cli.main', 'ci', str(target),
+            '--base', base_sha,
+            '--head', 'HEAD',
+            '--json',
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+
+    assert result.returncode == 2, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload['decision'] == 'block'
+    assert payload['inputs']['write_paths'] == ['generated/output.json']
+    assert payload['git']['mode'] == 'range'
+    assert payload['git']['base'] == base_sha
+    assert payload['git']['head'] == 'HEAD'
+
+
+
+def test_cli_ci_command_reports_json_errors_for_missing_git_selector(tmp_path):
+    target = tmp_path / 'repo'
+    _copy_fixture_repo(target)
+
+    compile_result = subprocess.run(
+        [sys.executable, '-m', 'cldc.cli.main', 'compile', str(target)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert compile_result.returncode == 0, compile_result.stderr
+    _init_git_repo(target)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            '-m', 'cldc.cli.main', 'ci', str(target),
+            '--json',
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stderr)
+    assert payload['command'] == 'ci'
+    assert 'requires either --staged or --base' in payload['error']
+
+
+
 def test_cli_help_exposes_version_and_absolute_path_support():
     result = subprocess.run(
         [sys.executable, '-m', 'cldc.cli.main', 'check', '--help'],
@@ -283,6 +450,18 @@ def test_cli_help_exposes_version_and_absolute_path_support():
     assert '--events-file' in result.stdout
     assert '--stdin-json' in result.stdout
     assert 'discovered' in result.stdout
+
+    ci_help = subprocess.run(
+        [sys.executable, '-m', 'cldc.cli.main', 'ci', '--help'],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert ci_help.returncode == 0
+    assert '--staged' in ci_help.stdout
+    assert '--base' in ci_help.stdout
+    assert '--head' in ci_help.stdout
 
     version_result = subprocess.run(
         [sys.executable, '-m', 'cldc.cli.main', '--version'],

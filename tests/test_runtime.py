@@ -7,6 +7,7 @@ import pytest
 from cldc.compiler.policy_compiler import compile_repo_policy
 from cldc.runtime.evaluator import check_repo_policy
 from cldc.runtime.events import load_execution_inputs
+from cldc.runtime.git import collect_git_write_paths
 
 
 @pytest.fixture
@@ -185,6 +186,22 @@ def test_check_repo_policy_rejects_stale_lockfile(tmp_path):
 
 
 
+def _init_git_repo(repo: Path) -> None:
+    import subprocess
+
+    commands = [
+        ['git', 'init'],
+        ['git', 'config', 'user.email', 'cldc-tests@example.com'],
+        ['git', 'config', 'user.name', 'CLDC Tests'],
+        ['git', 'add', '.'],
+        ['git', 'commit', '-m', 'baseline'],
+    ]
+    for command in commands:
+        result = subprocess.run(command, cwd=repo, capture_output=True, text=True, check=False)
+        assert result.returncode == 0, result.stderr
+
+
+
 def test_check_repo_policy_rejects_content_drift_even_when_mtime_and_rule_count_match(tmp_path):
     claude_path = tmp_path / 'CLAUDE.md'
     claude_path.write_text(
@@ -201,3 +218,79 @@ def test_check_repo_policy_rejects_content_drift_even_when_mtime_and_rule_count_
 
     with pytest.raises(ValueError, match='source_digest'):
         check_repo_policy(tmp_path, write_paths=['generated/output.json'])
+
+
+
+def test_collect_git_write_paths_supports_staged_changes(compiled_repo):
+    _init_git_repo(compiled_repo)
+    (compiled_repo / 'src').mkdir(exist_ok=True)
+    (compiled_repo / 'src' / 'main.py').write_text('print("changed")\n')
+
+    import subprocess
+
+    stage_result = subprocess.run(
+        ['git', 'add', 'src/main.py'],
+        cwd=compiled_repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert stage_result.returncode == 0, stage_result.stderr
+
+    write_paths, metadata = collect_git_write_paths(compiled_repo, staged=True)
+
+    assert write_paths == ['src/main.py']
+    assert metadata['mode'] == 'staged'
+    assert metadata['git_command'] == ['git', 'diff', '--cached', '--name-only']
+
+
+
+def test_collect_git_write_paths_supports_base_head_diff(compiled_repo):
+    _init_git_repo(compiled_repo)
+
+    import subprocess
+
+    base_result = subprocess.run(
+        ['git', 'rev-parse', 'HEAD'],
+        cwd=compiled_repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert base_result.returncode == 0, base_result.stderr
+    base_sha = base_result.stdout.strip()
+
+    generated = compiled_repo / 'generated' / 'output.json'
+    generated.parent.mkdir(parents=True, exist_ok=True)
+    generated.write_text('{"status": "changed"}\n')
+    add_result = subprocess.run(
+        ['git', 'add', 'generated/output.json'],
+        cwd=compiled_repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert add_result.returncode == 0, add_result.stderr
+    commit_result = subprocess.run(
+        ['git', 'commit', '-m', 'touch generated output'],
+        cwd=compiled_repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert commit_result.returncode == 0, commit_result.stderr
+
+    write_paths, metadata = collect_git_write_paths(compiled_repo, base=base_sha, head='HEAD')
+
+    assert write_paths == ['generated/output.json']
+    assert metadata['mode'] == 'range'
+    assert metadata['base'] == base_sha
+    assert metadata['head'] == 'HEAD'
+
+
+
+def test_collect_git_write_paths_requires_selection_mode(compiled_repo):
+    _init_git_repo(compiled_repo)
+
+    with pytest.raises(ValueError, match='requires either --staged or --base'):
+        collect_git_write_paths(compiled_repo)

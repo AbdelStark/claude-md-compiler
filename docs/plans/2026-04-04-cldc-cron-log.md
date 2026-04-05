@@ -121,3 +121,24 @@
   - The repo still lacks the dedicated `cldc ci` command, but the underlying checker is more trustworthy for that next integration step.
 - **Next highest-leverage task**
   - Ship `cldc ci` as the first one-command git-aware entrypoint (`--staged`, `--base`, `--head`) that derives changed files from git, feeds them into `cldc check`, and preserves the current JSON/error contracts for CI automation.
+
+## Iteration 7 — SHIPPING FEATURES
+- **What changed**
+  - Shipped a new `cldc ci` command that derives write paths directly from git and then evaluates them through the existing compiled policy engine.
+  - Added explicit git selection modes for CI/prod usage: `--staged` for `git diff --cached --name-only` and `--base`/`--head` for PR-style range diffs.
+  - Preserved the current `cldc check` decision/violation JSON contract while appending git provenance metadata so automation can tell which diff source was enforced.
+  - Added a dedicated runtime git integration module plus regression coverage for staged diffs, base/head diffs, and malformed selector usage.
+  - Updated README usage/status docs so the project now documents a true one-command CI entrypoint instead of only manual `cldc check` invocation.
+- **Verification run**
+  - `python -m pytest -q` → `47 passed`
+  - `python -m pip install -e .` → success
+  - `python -m build` → success (sdist + wheel)
+  - `cldc ci <tmp-repo> --staged --json` → success, returns git metadata plus the expected warning-level violations for `src/main.py`
+- **Current state of project**
+  - The repo now has a real git-aware enforcement entrypoint instead of requiring callers to expand changed files into repeated `--write` flags by hand.
+  - CI wrappers can evaluate staged changes or PR ranges with explicit provenance and the same violation semantics already proven by `cldc check`.
+  - Test coverage grew from 41 to 47 passing tests, including direct runtime and CLI coverage for git-derived write-path collection.
+  - The end-to-end story is materially more useful for local hooks and CI pipelines because policy enforcement can now start from git state, not just ad hoc manual inputs.
+  - Commit shipped on `main` with message `feat: add git-aware ci policy command`.
+- **Next highest-leverage task**
+  - Ship the first `cldc explain` / explainability report slice so CI and local runs can turn raw violations into reviewer-friendly rationale, provenance, and recommended next actions without losing the stable JSON artifact model.
