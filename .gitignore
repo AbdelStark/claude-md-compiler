@@ -10,3 +10,4 @@ build/
 .claude/tsc-cache/
 .claude/cache/
 .tldr/
+tests/fixtures/**/.claude/
