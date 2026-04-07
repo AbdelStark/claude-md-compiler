@@ -271,8 +271,16 @@ def doctor_repo_policy(repo_root: Path | str) -> DoctorReport:
     if not bundle.sources:
         warnings.append("no sources were loaded")
     if lockfile.exists() and bundle.sources:
-        newest_source_mtime = max((root / source.path).stat().st_mtime for source in bundle.sources)
-        if lockfile.stat().st_mtime < newest_source_mtime:
+        # Preset sources live inside the installed cldc package, not the
+        # repo — their content is covered by the source_digest check, so
+        # they are skipped here to avoid FileNotFoundError on `preset:*`
+        # paths.
+        repo_local_mtimes = [
+            (root / source.path).stat().st_mtime
+            for source in bundle.sources
+            if not source.path.startswith("preset:")
+        ]
+        if repo_local_mtimes and lockfile.stat().st_mtime < max(repo_local_mtimes):
             warnings.append("lockfile appears stale relative to policy sources")
 
     next_action = _recommend_next_action(errors, warnings)

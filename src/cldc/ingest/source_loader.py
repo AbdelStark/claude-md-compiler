@@ -10,7 +10,7 @@ from pathlib import PurePosixPath
 import yaml
 
 from cldc.ingest.discovery import DEFAULT_POLICY_GLOBS, DiscoveryResult, discover_policy_repo
-from cldc.presets import PRESET_SOURCE_KIND, PresetNotFoundError, load_preset, preset_path
+from cldc.presets import PRESET_SOURCE_KIND, PresetNotFoundError, load_preset
 
 SOURCE_PRECEDENCE = ["claude_md", "inline_block", "compiler_config", PRESET_SOURCE_KIND, "policy_file"]
 
@@ -122,7 +122,6 @@ def _load_preset_sources(preset_names: list[str]) -> list[PolicySource]:
     for name in preset_names:
         try:
             content = load_preset(name)
-            resolved_path = preset_path(name)
         except PresetNotFoundError as exc:
             raise ValueError(str(exc)) from exc
         sources.append(
@@ -153,7 +152,7 @@ def load_policy_sources(repo_root: Path | str) -> SourceBundle:
         sources.append(PolicySource(kind="claude_md", path=discovery.claude_path, content=claude_text))
         sources.extend(_extract_inline_blocks(claude_path, claude_text))
 
-    include_patterns = list(DEFAULT_POLICY_GLOBS)
+    include_patterns: list[str] = list(DEFAULT_POLICY_GLOBS)
     preset_names: list[str] = []
     if discovery.config_path:
         config_path = root / discovery.config_path

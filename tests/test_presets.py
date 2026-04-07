@@ -9,7 +9,7 @@ import sys
 
 import pytest
 
-from cldc.compiler.policy_compiler import compile_repo_policy
+from cldc.compiler.policy_compiler import compile_repo_policy, doctor_repo_policy
 from cldc.ingest.source_loader import PRESET_SOURCE_KIND, load_policy_sources
 from cldc.parser.rule_parser import parse_rule_documents
 from cldc.presets import PresetNotFoundError, list_presets, load_preset, preset_path
@@ -158,6 +158,30 @@ def test_compile_repo_policy_with_strict_preset_enforces_ci_green_claim(tmp_path
         claims=['ci-green'],
     )
     assert cleared.decision == 'pass'
+
+
+def test_doctor_repo_policy_with_extends_does_not_crash_on_preset_paths(tmp_path):
+    """Regression: `doctor` used to call `Path.stat()` on `preset:*` paths."""
+
+    _minimal_repo_with_extends(tmp_path, ['default'])
+
+    # Before compile: discovery should succeed and lockfile should be reported
+    # as missing without raising FileNotFoundError on the preset source path.
+    pre_compile = doctor_repo_policy(tmp_path)
+    assert pre_compile.discovered is True
+    assert pre_compile.lockfile_exists is False
+    assert pre_compile.source_count >= 1
+
+    compile_repo_policy(tmp_path)
+
+    # After compile: the staleness check must skip preset sources rather than
+    # crashing when it tries to stat a non-existent `preset:default` path.
+    post_compile = doctor_repo_policy(tmp_path)
+    assert post_compile.discovered is True
+    assert post_compile.lockfile_exists is True
+    assert post_compile.rule_count >= 2
+    assert post_compile.errors == []
+    assert not any('appears stale' in warning for warning in post_compile.warnings)
 
 
 def test_compile_repo_policy_lockfile_rule_count_includes_preset_rules(tmp_path):

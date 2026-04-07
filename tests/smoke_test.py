@@ -18,7 +18,7 @@ def main() -> int:
     assert _run("cldc", "--version") == f"cldc {installed_version}"
 
     help_text = _run("cldc", "--help")
-    for command in ("compile", "doctor", "check", "ci", "explain", "fix"):
+    for command in ("compile", "doctor", "check", "ci", "explain", "fix", "preset"):
         assert command in help_text
 
     return 0
