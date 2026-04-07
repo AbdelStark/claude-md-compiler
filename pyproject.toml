@@ -30,6 +30,7 @@ classifiers = [
 requires-python = ">=3.11"
 dependencies = [
   "PyYAML>=6.0",
+  "textual>=0.80",
 ]
 
 [project.urls]
@@ -41,6 +42,7 @@ Issues = "https://github.com/AbdelStark/claude-md-compiler/issues"
 dev = [
   "hypothesis>=6",
   "pytest>=8.0",
+  "pytest-asyncio>=0.23",
   "pytest-benchmark>=4",
   "pytest-cov>=5",
   "ruff>=0.6",
@@ -67,6 +69,7 @@ markers = [
   "benchmark: performance benchmarks (run with --benchmark-only)",
   "slow: tests that take more than a second",
 ]
+asyncio_mode = "auto"
 filterwarnings = [
   "error",
   "ignore::DeprecationWarning",
@@ -99,7 +102,13 @@ branch = true
 # in tests/test_cli.py. Coverage.py cannot see those because the subprocess
 # runs in a separate interpreter. Excluding it keeps the gate meaningful for
 # the library modules (which ARE measured) without double-counting the CLI.
-omit = ["src/cldc/cli/main.py"]
+# The TUI is exercised via Textual's Pilot in tests/test_tui.py but the bulk
+# of its surface is reactive UI plumbing that does not benefit from line
+# coverage — excluded so the gate stays honest for the policy core.
+omit = [
+  "src/cldc/cli/main.py",
+  "src/cldc/tui/*",
+]
 
 [tool.coverage.report]
 exclude_lines = [

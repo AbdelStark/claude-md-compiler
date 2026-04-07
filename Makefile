@@ -2,7 +2,7 @@
 # Usage: `make <target>`. Run `make help` for the full target list.
 
 .DEFAULT_GOAL := help
-.PHONY: help install test lint fmt fmt-check typecheck cover build clean smoke all
+.PHONY: help install test lint fmt fmt-check typecheck cover build clean smoke tui all
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-12s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -34,6 +34,9 @@ build: ## Build wheel + sdist into dist/
 
 smoke: build ## Smoke-test the freshly-built wheel in an isolated env
 	uv run --isolated --no-project --with dist/*.whl tests/smoke_test.py
+
+tui: ## Launch the interactive TUI against tests/fixtures/repo_a
+	uv run cldc tui tests/fixtures/repo_a
 
 clean: ## Remove build, cache, and coverage artifacts
 	rm -rf dist/ .pytest_cache/ .coverage coverage.xml .benchmarks/

@@ -201,6 +201,17 @@ def build_parser() -> argparse.ArgumentParser:
     _add_json_flag(preset_show_parser)
     _add_output_flag(preset_show_parser)
 
+    tui_parser = subparsers.add_parser(
+        "tui",
+        help="Launch the interactive terminal UI",
+        description=(
+            "Launch the interactive terminal UI (Textual-based). Loads the repo's policy, "
+            "browses sources and rules, composes runtime evidence, and runs live checks "
+            "against the compiled lockfile without leaving the terminal."
+        ),
+    )
+    tui_parser.add_argument("repo", nargs="?", default=".", help="Repo root or any path inside the repo")
+
     return parser
 
 
@@ -501,6 +512,10 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             parser.error(f"unknown preset subcommand: {args.preset_command}")
             return 2
+        if args.command == "tui":
+            from cldc.tui import run_tui
+
+            return run_tui(Path(args.repo))
     except Exception as exc:
         if getattr(args, "json_output", False):
             print(

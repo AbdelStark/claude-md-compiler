@@ -16,6 +16,7 @@ be tested in isolation and re-used by other tools.
 | Compiler | `src/cldc/compiler/` | Produce the versioned lockfile artifact. |
 | Runtime | `src/cldc/runtime/` | Evaluate evidence, render reports, build fix plans, integrate with git. |
 | CLI | `src/cldc/cli/` | Thin argparse shell that delegates to the layers above. |
+| TUI | `src/cldc/tui/` | Textual-based interactive explorer that delegates to the same library calls. |
 
 A separate `src/cldc/presets/` subpackage ships bundled opinionated policy
 packs (`default`, `strict`, `docs-sync`) and the loader API used by the ingest
@@ -42,7 +43,16 @@ Primary modules per layer:
 - Presets: `src/cldc/presets/loader.py` (`list_presets`, `load_preset`,
   `preset_path`, `PresetNotFoundError`, `PRESET_SOURCE_KIND`).
 - CLI: `src/cldc/cli/main.py` (argparse subparsers for `compile`, `doctor`,
-  `check`, `ci`, `explain`, `fix`, `preset`).
+  `check`, `ci`, `explain`, `fix`, `preset`, `tui`).
+- TUI: `src/cldc/tui/app.py` (`CldcApp`, `run_tui`, modal screens for presets
+  and doctor), `src/cldc/tui/state.py` (`TuiState`, `Evidence`,
+  `discover_state`, `recompile_state`, `run_check`),
+  `src/cldc/tui/widgets.py` (`RepoBar`, `SourcesPane`, `RulesPane`,
+  `DetailPane`, `EvidenceForm`, `DecisionPanel`), and
+  `src/cldc/tui/styles.tcss` (dark theme with focus-aware borders and mode
+  badges). The TUI never talks to the filesystem directly — every mutation
+  flows through the ingest / parser / compiler / runtime layers, so what you
+  see on screen is what `cldc` would produce in a headless run.
 
 ## Data flow
 

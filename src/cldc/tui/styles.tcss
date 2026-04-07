@@ -1,0 +1,328 @@
+/* cldc TUI — dark, focused, information-dense.
+ *
+ * Layout: header bar, three-column browser (sources | rules | detail),
+ * evidence form, decision panel, footer. Focus is driven by borders and
+ * subtle accent tints; nothing animates distractingly.
+ */
+
+Screen {
+    background: $background;
+    color: $text;
+    layers: base overlay;
+}
+
+Header {
+    background: $primary-darken-2;
+    color: $text;
+}
+
+Footer {
+    background: $primary-darken-3;
+    color: $text-muted;
+}
+
+/* --- Repo bar -------------------------------------------------------- */
+
+#repo-bar {
+    height: 3;
+    padding: 0 1;
+    background: $panel;
+    border-bottom: heavy $primary;
+    layout: horizontal;
+}
+
+#repo-bar Label {
+    width: 1fr;
+    content-align: left middle;
+}
+
+#repo-bar .status-label {
+    width: auto;
+    padding: 0 1;
+}
+
+#repo-bar .status-healthy {
+    color: $success;
+    text-style: bold;
+}
+
+#repo-bar .status-drifted {
+    color: $warning;
+    text-style: bold;
+}
+
+#repo-bar .status-broken {
+    color: $error;
+    text-style: bold;
+}
+
+#repo-bar .status-missing {
+    color: $text-muted;
+    text-style: italic;
+}
+
+/* --- Three-column browser ------------------------------------------- */
+
+#browser {
+    height: 1fr;
+    min-height: 14;
+    layout: horizontal;
+}
+
+#browser > .pane {
+    border: round $primary-darken-1;
+    padding: 0 1;
+    height: 100%;
+}
+
+#browser > .pane:focus-within {
+    border: round $accent;
+}
+
+#sources-pane {
+    width: 30%;
+    min-width: 28;
+}
+
+#rules-pane {
+    width: 35%;
+    min-width: 28;
+}
+
+#detail-pane {
+    width: 1fr;
+    min-width: 30;
+}
+
+#browser .pane-title {
+    color: $accent;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#sources-tree {
+    background: $panel;
+    height: 1fr;
+}
+
+#rules-table {
+    background: $panel;
+    height: 1fr;
+}
+
+#rules-table > .datatable--header {
+    background: $primary-darken-2;
+    text-style: bold;
+}
+
+#rules-table > .datatable--cursor {
+    background: $accent 35%;
+    color: $text;
+    text-style: bold;
+}
+
+#rules-table > .datatable--hover {
+    background: $boost;
+}
+
+#detail-view {
+    background: $panel;
+    padding: 0 1;
+    height: 1fr;
+    overflow-y: auto;
+    scrollbar-size-vertical: 1;
+}
+
+/* Mode badges in the detail panel and rule list */
+
+.badge {
+    padding: 0 1;
+    color: $text;
+    text-style: bold;
+}
+
+.badge-block {
+    background: $error;
+    color: $text;
+}
+
+.badge-fix {
+    background: $error 70%;
+    color: $text;
+}
+
+.badge-warn {
+    background: $warning;
+    color: $text;
+}
+
+.badge-observe {
+    background: $primary-darken-2;
+    color: $text-muted;
+}
+
+/* --- Evidence form --------------------------------------------------- */
+
+#evidence-form {
+    height: auto;
+    padding: 1;
+    border: round $primary-darken-1;
+    background: $panel;
+    margin: 1 0 0 0;
+}
+
+#evidence-form:focus-within {
+    border: round $accent;
+}
+
+#evidence-form .form-title {
+    color: $accent;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#evidence-form Label {
+    width: 14;
+    content-align: right middle;
+    color: $text-muted;
+    padding: 0 1 0 0;
+}
+
+#evidence-form .evidence-row {
+    height: 3;
+    layout: horizontal;
+}
+
+#evidence-form Input {
+    width: 1fr;
+    background: $boost;
+    border: tall $primary-darken-1;
+}
+
+#evidence-form Input:focus {
+    border: tall $accent;
+}
+
+/* --- Decision panel -------------------------------------------------- */
+
+#decision-panel {
+    height: auto;
+    min-height: 7;
+    padding: 1;
+    border: round $primary-darken-1;
+    background: $panel;
+    margin: 1 0 0 0;
+}
+
+#decision-panel:focus-within {
+    border: round $accent;
+}
+
+#decision-banner {
+    width: 100%;
+    height: 3;
+    content-align: center middle;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#decision-banner.decision-pass {
+    background: $success 30%;
+    color: $success;
+}
+
+#decision-banner.decision-warn {
+    background: $warning 30%;
+    color: $warning;
+}
+
+#decision-banner.decision-block {
+    background: $error 30%;
+    color: $error;
+}
+
+#decision-banner.decision-idle {
+    background: $primary-darken-2;
+    color: $text-muted;
+}
+
+#decision-body {
+    height: auto;
+    max-height: 14;
+    overflow-y: auto;
+}
+
+#decision-body .violation-row {
+    padding: 0 1;
+    height: auto;
+}
+
+#decision-body .violation-row.blocking {
+    color: $error;
+}
+
+#decision-body .violation-row.non-blocking {
+    color: $warning;
+}
+
+#decision-body .violation-row.passed {
+    color: $success;
+}
+
+/* --- Modal screens --------------------------------------------------- */
+
+PresetModal {
+    align: center middle;
+}
+
+PresetModal > .modal-box {
+    width: 80%;
+    height: 80%;
+    border: round $accent;
+    background: $panel;
+    padding: 1 2;
+}
+
+PresetModal .modal-title {
+    color: $accent;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+PresetModal #preset-content {
+    background: $background;
+    border: round $primary-darken-1;
+    padding: 1;
+    height: 1fr;
+    overflow: auto;
+}
+
+PresetModal #preset-list {
+    height: 1fr;
+    background: $panel;
+}
+
+DoctorModal {
+    align: center middle;
+}
+
+DoctorModal > .modal-box {
+    width: 70%;
+    height: auto;
+    max-height: 80%;
+    border: round $accent;
+    background: $panel;
+    padding: 1 2;
+}
+
+DoctorModal .modal-title {
+    color: $accent;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+/* --- Notification styling ------------------------------------------- */
+
+Toast {
+    background: $primary-darken-2;
+}

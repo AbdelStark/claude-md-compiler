@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `cldc tui` — interactive Textual-based terminal UI. Launches a three-pane
+  policy explorer (sources / rules / detail) with a four-field evidence
+  form and a colored decision panel. Keybindings: `c` compile, `r` run
+  check, `d` doctor, `p` presets, `R` reload, `ctrl+l` clear evidence,
+  `?` help, `q` quit.
+- `textual>=0.80` added as a runtime dependency.
+- `pytest-asyncio` added to dev deps; enabled in `addopts` with
+  `asyncio_mode = "auto"` so `async def test_*` drivers work transparently.
+- `tests/test_tui.py` with Pilot-based smoke tests for the state module,
+  the reactive app mount, and the compile/run-check/clear-evidence bindings.
+
 ## [0.1.1] - 2026-04-07
 
 ### Added

@@ -8,8 +8,8 @@
 
 - Language: Python 3.11+
 - Packaging: `uv` with `uv_build`
-- Runtime dependency: `PyYAML`
-- Test runner: `pytest`
+- Runtime dependencies: `PyYAML`, `textual`
+- Test runner: `pytest` (+ `pytest-asyncio`, `hypothesis`, `pytest-cov`, `pytest-benchmark`)
 - Entry point: `cldc`
 
 ## Repository Map
@@ -25,6 +25,7 @@
 - `src/cldc/runtime/reporting.py`: saved report validation and rendering.
 - `src/cldc/runtime/remediation.py`: deterministic fix-plan generation and rendering.
 - `src/cldc/runtime/git.py`: staged and base/head diff collection.
+- `src/cldc/tui/`: Textual-based interactive TUI (`cldc tui`). `app.py` hosts `CldcApp`, `state.py` owns the `TuiState` dataclass + loaders, `widgets.py` defines the custom panes, and `styles.tcss` is the dark theme stylesheet.
 - `tests/fixtures/repo_a/`: canonical fixture repo used by compile/runtime/CLI tests.
 - `docs/rfcs/`: frozen implementation contracts.
 
@@ -42,6 +43,7 @@ uv run cldc explain tests/fixtures/repo_a --write src/main.py --format markdown
 uv run cldc fix tests/fixtures/repo_a --write src/main.py --json
 uv run cldc preset list
 uv run cldc preset show default
+uv run cldc tui tests/fixtures/repo_a
 ```
 
 ## Conventions

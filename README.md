@@ -64,7 +64,34 @@ cldc fix . --write src/main.py --format markdown
 # 5. Gate a staged diff or PR range
 cldc ci . --staged
 cldc ci . --base origin/main --head HEAD
+
+# 6. Or explore everything interactively in the terminal
+cldc tui .
 ```
+
+## Interactive TUI
+
+`cldc tui` launches a Textual-powered terminal UI for exploring a repo's policy
+without leaving the shell. It shows the discovered sources, the rule table with
+live mode badges, the selected rule's full definition, a four-field evidence
+form (reads / writes / commands / claims), and a colored decision panel that
+updates on every check.
+
+Keybindings:
+
+| Key     | Action |
+| ------- | --- |
+| `c`     | Compile the repo (`cldc compile`) |
+| `r`     | Run a check against the current evidence |
+| `d`     | Open the doctor report |
+| `p`     | Browse bundled preset packs |
+| `R`     | Reload sources from disk |
+| `ctrl+l` | Clear the evidence form |
+| `?`     | Show help |
+| `q`     | Quit |
+
+The TUI uses only the same library calls as the non-interactive CLI, so the
+behavior you see on screen is the behavior a `cldc check` in CI would produce.
 
 Exit codes:
 
