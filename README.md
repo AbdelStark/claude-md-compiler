@@ -16,11 +16,20 @@
 
 ## Install
 
+`cldc` is a CLI you install once and point at any repo whose `CLAUDE.md` you want to enforce.
+
 ```bash
-uv add claude-md-compiler        # or: pip install claude-md-compiler
+# Persistent install (recommended)
+uv tool install claude-md-compiler        # or: pipx install claude-md-compiler
+                                          # or: pip install claude-md-compiler
+
+# One-shot, no install
+uvx --from claude-md-compiler cldc compile .
 ```
 
-Requires Python 3.11+. The only runtime dependency is PyYAML.
+Verify with `cldc --version`. Requires Python 3.11+. The only runtime dependency is PyYAML.
+
+> Run these in *your* project, not inside a clone of this repo. From inside the source tree, `uv add claude-md-compiler` errors with *"self-dependencies are not permitted"* — use the [Develop](#develop) workflow instead.
 
 ## Quick start
 
@@ -173,11 +182,22 @@ jobs:
 ```bash
 git clone https://github.com/AbdelStark/claude-md-compiler
 cd claude-md-compiler
-uv sync
-uv run pytest
+uv sync                       # creates .venv and installs cldc in editable mode
+uv run pytest                 # full test suite
+
+# Run the local build against a bundled fixture
+uv run cldc compile tests/fixtures/repo_a
+uv run cldc check   tests/fixtures/repo_a \
+  --write src/main.py \
+  --read  docs/rfcs/CLDC-0006-validator-engine.md \
+  --command "pytest -q"
+
+# Or activate the venv and call cldc directly
+source .venv/bin/activate
+cldc --version
 ```
 
-Layout: `src/cldc/{ingest,parser,compiler,runtime,cli}`. RFCs that define the contracts live in `docs/rfcs/`.
+`uv sync` installs the package editable, so source edits take effect immediately — no rebuild needed. Layout: `src/cldc/{ingest,parser,compiler,runtime,cli}`. RFCs that define the contracts live in `docs/rfcs/`.
 
 ## License
 
