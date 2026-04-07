@@ -2,162 +2,183 @@
 
 # claude-md-compiler
 
-Compile `CLAUDE.md` into a lockfile, then enforce repo changes against it in local runs, staged diffs, or CI.
+**Compile `CLAUDE.md` into a versioned lockfile. Enforce it on local edits, staged diffs, and CI.**
 
-![Version](https://img.shields.io/badge/version-0.1.0-0F766E)
-![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)
-![License](https://img.shields.io/badge/license-MIT-16A34A)
-![Interface](https://img.shields.io/badge/interface-CLI-111827)
+[![PyPI](https://img.shields.io/pypi/v/claude-md-compiler?color=0F766E)](https://pypi.org/project/claude-md-compiler/)
+[![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-16A34A)](./LICENSE)
 
 </div>
 
-![CLI Preview or Terminal Output](./docs/screenshot.svg)
+![cldc preview](./docs/screenshot.svg)
 
-## How It Works
+`cldc` turns the rules in your `CLAUDE.md` into a deterministic policy lockfile, then checks runtime activity (reads, writes, commands, git diffs) against it. The same lockfile gates a local edit, a pre-commit hook, and a pull request.
 
-```mermaid
-flowchart LR
-    A["CLAUDE.md<br/>inline cldc blocks"] --> D["Source discovery"]
-    B[".claude-compiler.yaml"] --> D
-    C["policies/*.yml"] --> D
-    D --> E["Rule parser<br/>normalize YAML rules"]
-    E --> F["cldc compile"]
-    F --> G[".claude/policy.lock.json"]
-    D --> H["cldc doctor<br/>discovery + lockfile diagnostics"]
-    G --> H
-    G --> I["cldc check<br/>--read --write --command<br/>--events-file / --stdin-json"]
-    G --> J["cldc ci<br/>--staged or --base/--head"]
-    I --> K["policy report JSON"]
-    J --> K
-    K --> L["cldc explain<br/>text or markdown"]
-    K --> M["cldc fix<br/>deterministic remediation plan"]
-```
-
-## 3-Step Quick Start
-
-1. Sync the local toolchain.
-
-   ```bash
-   uv sync
-   ```
-
-   ```text
-   Resolved 8 packages in 2ms
-   Audited 7 packages in 0.26ms
-   ```
-
-2. Compile the example policy repo into a lockfile.
-
-   ```bash
-   uv run cldc compile tests/fixtures/repo_a
-   ```
-
-   ```text
-   Compiled 3 rules from 4 sources into .claude/policy.lock.json for .../tests/fixtures/repo_a
-   Default mode: warn
-   Source digest: 6c24d05e4b99ae5a5593d33f00098244d9b07eb791cf2f22c6a9fb43674a7026
-   Discovery warnings:
-   - compiled lockfile not found at .claude/policy.lock.json
-   ```
-
-3. Run a passing policy check with real evidence.
-
-   ```bash
-   uv run cldc check tests/fixtures/repo_a \
-     --write src/main.py \
-     --read docs/rfcs/CLDC-0006-validator-engine.md \
-     --command "pytest -q" \
-     --json
-   ```
-
-   ```text
-   {
-     "decision": "pass",
-     "summary": "Policy check passed with no violations.",
-     "violation_count": 0
-   }
-   ```
-
-## The Good Stuff
-
-### Reuse One Report Everywhere
+## Install
 
 ```bash
-uv run cldc check . --events-file .cldc-events.json --json --output artifacts/policy-report.json
-uv run cldc explain . --report-file artifacts/policy-report.json --format markdown --output artifacts/policy-explanation.md
-uv run cldc fix . --report-file artifacts/policy-report.json --format markdown --output artifacts/policy-fix-plan.md
+uv add claude-md-compiler        # or: pip install claude-md-compiler
 ```
 
-- `--events-file` accepts `read_paths`, `write_paths`, `commands`, `claims`, or an `events` array with `read`, `write`, `command`, and `claim`.
-- `--output` writes the exact emitted payload to disk and creates parent directories automatically.
-- `explain` and `fix` consume the same saved JSON artifact without rerunning enforcement.
+Requires Python 3.11+. The only runtime dependency is PyYAML.
 
-### Gate a Staged Diff
+## Quick start
 
 ```bash
-uv run cldc ci . --staged --json
+# 1. Compile policy from CLAUDE.md + policies/*.yml
+cldc compile .
+
+# 2. Check a change against it
+cldc check . --write src/main.py --command "pytest -q"
+
+# 3. Gate a pull request
+cldc ci . --base origin/main --head HEAD
 ```
 
-- `ci` maps `git diff --cached --name-only` into policy `write_paths`.
-- Use `--base origin/main --head HEAD` for pull request range checks.
-- Blocking violations return exit code `2`; warning-only reports stay exit code `0`.
+Exit codes: `0` clean or warn-only · `1` runtime error · `2` blocking violations.
 
-### Catch a Hard Block
+## How it works
 
-```bash
-uv run cldc check tests/fixtures/repo_a --write generated/output.json --json
+```
+ sources                                   evidence
+ ─────────────────────                     ───────────────────────────
+ CLAUDE.md (cldc blocks)                   --read / --write / --command
+ .claude-compiler.yaml                     --events-file / --stdin-json
+ policies/*.yml                            git diff (staged | base..head)
+          │                                            │
+          ▼                                            ▼
+    cldc compile                               cldc check  /  cldc ci
+          │                                            │
+          ▼                                            ▼
+ .claude/policy.lock.json  ───────────────▶   pass · warn · block
+                                                       │
+                                           ┌───────────┴───────────┐
+                                           ▼                       ▼
+                                     cldc explain              cldc fix
+                                   (text · md · json)      (remediation plan)
 ```
 
-- `deny_write` rules can block paths like `generated/**` directly from runtime evidence.
-- The JSON report carries a stable `$schema`, `format_version`, `decision`, `summary`, and per-rule provenance.
+Three stages: **discover** sources, **compile** them into a digest-stable lockfile, **enforce** it against execution evidence. Reports are deterministic and reusable — `explain` and `fix` consume saved JSON without re-running enforcement.
 
-## Configuration / API
+## Commands
 
-Policy discovery walks up from the path you pass and looks for `CLAUDE.md`, `.claude-compiler.yaml` or `.yml`, `policies/*.yml` or `.yaml`, and `.claude/policy.lock.json`.
+| Command | Purpose |
+| --- | --- |
+| `cldc compile [repo]` | Parse sources, write `.claude/policy.lock.json`. |
+| `cldc doctor [repo]`  | Diagnose discovery, parsing, and lockfile state. |
+| `cldc check [repo]`   | Evaluate runtime evidence against the policy. |
+| `cldc ci [repo]`      | Same as `check`, but read changed files from `git diff`. |
+| `cldc explain [repo]` | Render a saved or fresh report as text or markdown. |
+| `cldc fix [repo]`     | Build a deterministic remediation plan from a report. |
 
-| Flag | Default | Description |
-| --- | --- | --- |
-| `--read <path>` | repeatable | Mark repo paths read before making a change. |
-| `--write <path>` | repeatable | Mark repo paths written or otherwise touched. |
-| `--command <cmd>` | repeatable | Record validation commands already run. |
-| `--events-file <file>` | none | Merge JSON execution evidence from disk. |
-| `--stdin-json` | `false` | Merge JSON execution evidence from stdin. |
-| `--staged` | `false` | In `ci`, evaluate `git diff --cached --name-only`. |
-| `--base <ref>` | none | In `ci`, evaluate a git diff range. |
-| `--head <ref>` | `HEAD` | Head ref paired with `--base`. |
-| `--report-file <file>` | none | In `explain` or `fix`, reuse a saved report artifact. |
-| `--format text\|markdown` | `text` | Human-readable render format for `explain` and `fix`. |
-| `--json` | `false` | Emit machine-readable JSON. |
-| `--output <path>` | none | Mirror stdout to a file and create parent directories. |
+Every command takes `--json` and `--output <file>` for machine-readable, persistable results.
 
-## Deployment / Integration
+## Writing rules
+
+Rules live inline in `CLAUDE.md`, in `.claude-compiler.yaml`, or in `policies/*.yml`. They merge in that order, deterministically.
+
+````markdown
+# CLAUDE.md
+
+```cldc
+rules:
+  - id: generated-lock
+    kind: deny_write
+    mode: block
+    paths: ["generated/**"]
+    message: Generated files are produced by the build — don't edit them.
+```
+````
 
 ```yaml
-name: policy
+# policies/commands.yml
+rules:
+  - id: run-tests
+    kind: require_command
+    commands: ["pytest -q"]
+    when_paths: ["src/**", "tests/**"]
+    message: Run tests before finishing.
+```
 
-on:
-  pull_request:
+| Kind | What it asserts |
+| --- | --- |
+| `deny_write`      | A path glob must not be written. |
+| `require_read`    | A path must be read before another path is written. |
+| `require_command` | A command must run when matching paths are touched. |
+| `couple_change`   | Editing one path requires editing another. |
+
+| Mode | Behavior |
+| --- | --- |
+| `observe` | Recorded only. No exit-code change. |
+| `warn`    | Reported, exit `0`. *(default)* |
+| `block`   | Reported, exit `2`. |
+| `fix`     | Reported with a remediation plan from `cldc fix`. |
+
+## Feeding evidence
+
+`check`, `explain`, and `fix` accept evidence three ways. Mix and match.
+
+```bash
+# Direct flags
+cldc check . --read docs/spec.md --write src/main.py --command "pytest -q"
+
+# JSON file  (read_paths, write_paths, commands, claims, or events[])
+cldc check . --events-file .cldc-events.json
+
+# Stdin
+cat .cldc-events.json | cldc check . --stdin-json
+```
+
+Save a report once, reuse it everywhere:
+
+```bash
+cldc check . --events-file .cldc-events.json --json --output artifacts/report.json
+cldc explain . --report-file artifacts/report.json --format markdown --output artifacts/report.md
+cldc fix     . --report-file artifacts/report.json --format markdown --output artifacts/fix.md
+```
+
+## CI
+
+```yaml
+# .github/workflows/policy.yml
+name: policy
+on: pull_request
 
 jobs:
   cldc:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
+        with: { fetch-depth: 0 }
       - uses: astral-sh/setup-uv@v6
-
       - run: uv sync
       - run: uv run cldc compile .
-
-      - name: Enforce policy and keep the report
+      - name: Enforce
         run: |
           set +e
-          uv run cldc ci . --base origin/${{ github.base_ref }} --head ${{ github.sha }} --json --output artifacts/policy-report.json
+          uv run cldc ci . \
+            --base origin/${{ github.base_ref }} --head ${{ github.sha }} \
+            --json --output artifacts/policy-report.json
           status=$?
-          uv run cldc explain . --report-file artifacts/policy-report.json --format markdown --output artifacts/policy-explanation.md
+          uv run cldc explain . \
+            --report-file artifacts/policy-report.json \
+            --format markdown --output artifacts/policy-explanation.md
           exit $status
 ```
 
 `cldc ci` is the enforcement edge. `cldc explain` turns the saved JSON into a review artifact before the job exits with the original policy status.
+
+## Develop
+
+```bash
+git clone https://github.com/AbdelStark/claude-md-compiler
+cd claude-md-compiler
+uv sync
+uv run pytest
+```
+
+Layout: `src/cldc/{ingest,parser,compiler,runtime,cli}`. RFCs that define the contracts live in `docs/rfcs/`.
+
+## License
+
+MIT — see [LICENSE](./LICENSE).
