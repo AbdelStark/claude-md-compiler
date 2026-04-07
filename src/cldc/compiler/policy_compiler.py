@@ -8,8 +8,11 @@ from pathlib import Path
 from typing import Any
 
 from cldc import __version__
+from cldc._logging import get_logger
 from cldc.ingest.source_loader import SOURCE_PRECEDENCE, load_policy_sources
 from cldc.parser.rule_parser import parse_rule_documents
+
+logger = get_logger(__name__)
 
 LOCKFILE_FORMAT_VERSION = "1"
 LOCKFILE_SCHEMA = "https://cldc.dev/schemas/policy-lock/v1"
@@ -110,7 +113,7 @@ def compile_repo_policy(repo_root: Path | str) -> CompiledPolicy:
     lock_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     discovery = _compiled_discovery(bundle.discovery.to_dict())
 
-    return CompiledPolicy(
+    compiled = CompiledPolicy(
         repo_root=str(root),
         lockfile_path=".claude/policy.lock.json",
         compiler_version=__version__,
@@ -123,6 +126,13 @@ def compile_repo_policy(repo_root: Path | str) -> CompiledPolicy:
         warnings=list(discovery["warnings"]),
         discovery=discovery,
     )
+    logger.debug(
+        "compiled %d rules from %d sources into %s",
+        compiled.rule_count,
+        compiled.source_count,
+        compiled.lockfile_path,
+    )
+    return compiled
 
 
 def _safe_resolve(path: Path | str) -> str:
@@ -284,7 +294,7 @@ def doctor_repo_policy(repo_root: Path | str) -> DoctorReport:
             warnings.append("lockfile appears stale relative to policy sources")
 
     next_action = _recommend_next_action(errors, warnings)
-    return DoctorReport(
+    report = DoctorReport(
         repo_root=str(root),
         discovered=True,
         source_count=len(bundle.sources),
@@ -301,3 +311,10 @@ def doctor_repo_policy(repo_root: Path | str) -> DoctorReport:
         next_action=next_action,
         discovery=bundle.discovery.to_dict(),
     )
+    logger.debug(
+        "doctor report: %d errors, %d warnings, next_action=%s",
+        len(report.errors),
+        len(report.warnings),
+        report.next_action,
+    )
+    return report
