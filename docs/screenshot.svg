@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" fill="none">
+  <rect width="1600" height="900" fill="#0F172A"/>
+  <rect x="90" y="90" width="1420" height="720" rx="24" fill="#111827" stroke="#334155" stroke-width="4"/>
+  <rect x="90" y="90" width="1420" height="64" rx="24" fill="#1E293B"/>
+  <circle cx="138" cy="122" r="10" fill="#F87171"/>
+  <circle cx="174" cy="122" r="10" fill="#FBBF24"/>
+  <circle cx="210" cy="122" r="10" fill="#34D399"/>
+  <text x="800" y="128" fill="#CBD5E1" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace" font-size="28" text-anchor="middle">cldc terminal preview placeholder</text>
+  <text x="150" y="230" fill="#93C5FD" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace" font-size="34">$ uv run cldc ci . --staged --json</text>
+  <text x="150" y="310" fill="#E2E8F0" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace" font-size="30">{</text>
+  <text x="190" y="360" fill="#F8FAFC" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace" font-size="30">"decision": "warn",</text>
+  <text x="190" y="410" fill="#F8FAFC" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace" font-size="30">"summary": "Policy check found 2 non-blocking violation(s).",</text>
+  <text x="190" y="460" fill="#F8FAFC" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace" font-size="30">"next_action": "Read docs/rfcs/** before modifying src/main.py"</text>
+  <text x="150" y="510" fill="#E2E8F0" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace" font-size="30">}</text>
+  <rect x="150" y="590" width="1300" height="120" rx="16" fill="#0B1220" stroke="#1E293B" stroke-width="2"/>
+  <text x="800" y="645" fill="#94A3B8" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace" font-size="28" text-anchor="middle">Replace this SVG with a real terminal screenshot or GIF in docs/</text>
+  <text x="800" y="685" fill="#64748B" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace" font-size="24" text-anchor="middle">Suggested capture: cldc compile -> cldc ci -> cldc explain</text>
+</svg>

@@ -1,131 +1,163 @@
+<div align="center">
+
 # claude-md-compiler
 
-Compile CLAUDE.md into enforceable repo policy for Claude Code.
+Compile `CLAUDE.md` into a lockfile, then enforce repo changes against it in local runs, staged diffs, or CI.
 
-## North star
-Turn CLAUDE.md from a passive instruction document into an active, versioned execution contract enforced across local runs, CI, and agent workflows.
+![Version](https://img.shields.io/badge/version-0.1.0-0F766E)
+![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)
+![License](https://img.shields.io/badge/license-MIT-16A34A)
+![Interface](https://img.shields.io/badge/interface-CLI-111827)
 
-## Why this repo exists
-This is a private spec-first repo. It exists to turn a sharp product idea into a buildable system with enough precision that implementation can be delegated without hand-wavy gaps.
+</div>
 
-## What is in here
-- `docs/specs/product-spec.md` — the full product specification
-- `docs/rfcs/` — implementation contracts
+![CLI Preview or Terminal Output](./docs/screenshot.svg)
 
-## Current status
-Early implementation phase. The repo now ships a working `cldc` CLI with `compile`, `doctor`, `check`, `explain`, `fix`, and git-aware `ci` commands, canonical source discovery from nested paths, deterministic lockfile generation, schema-aware doctor diagnostics, runtime enforcement for `deny_write`, `require_read`, and `require_command` rules, CI-friendly JSON event ingestion for runtime checks, one-command git diff evaluation for staged changes or base/head PR ranges, reviewer-friendly check summaries / recommended next actions, reusable explainability rendering from saved report artifacts or fresh evidence, first-pass report publishing via `--output` file export, and a remediation-planning slice that turns violations into deterministic follow-up steps and suggested commands.
+## How It Works
 
-## Install
-```bash
-uv tool install claude-md-compiler
-cldc --version
+```mermaid
+flowchart LR
+    A["CLAUDE.md<br/>inline cldc blocks"] --> D["Source discovery"]
+    B[".claude-compiler.yaml"] --> D
+    C["policies/*.yml"] --> D
+    D --> E["Rule parser<br/>normalize YAML rules"]
+    E --> F["cldc compile"]
+    F --> G[".claude/policy.lock.json"]
+    D --> H["cldc doctor<br/>discovery + lockfile diagnostics"]
+    G --> H
+    G --> I["cldc check<br/>--read --write --command<br/>--events-file / --stdin-json"]
+    G --> J["cldc ci<br/>--staged or --base/--head"]
+    I --> K["policy report JSON"]
+    J --> K
+    K --> L["cldc explain<br/>text or markdown"]
+    K --> M["cldc fix<br/>deterministic remediation plan"]
 ```
 
-Install directly from GitHub before the package is published:
+## 3-Step Quick Start
+
+1. Sync the local toolchain.
+
+   ```bash
+   uv sync
+   ```
+
+   ```text
+   Resolved 8 packages in 2ms
+   Audited 7 packages in 0.26ms
+   ```
+
+2. Compile the example policy repo into a lockfile.
+
+   ```bash
+   uv run cldc compile tests/fixtures/repo_a
+   ```
+
+   ```text
+   Compiled 3 rules from 4 sources into .claude/policy.lock.json for .../tests/fixtures/repo_a
+   Default mode: warn
+   Source digest: 6c24d05e4b99ae5a5593d33f00098244d9b07eb791cf2f22c6a9fb43674a7026
+   Discovery warnings:
+   - compiled lockfile not found at .claude/policy.lock.json
+   ```
+
+3. Run a passing policy check with real evidence.
+
+   ```bash
+   uv run cldc check tests/fixtures/repo_a \
+     --write src/main.py \
+     --read docs/rfcs/CLDC-0006-validator-engine.md \
+     --command "pytest -q" \
+     --json
+   ```
+
+   ```text
+   {
+     "decision": "pass",
+     "summary": "Policy check passed with no violations.",
+     "violation_count": 0
+   }
+   ```
+
+## The Good Stuff
+
+### Reuse One Report Everywhere
 
 ```bash
-uv tool install git+https://github.com/AbdelStark/claude-md-compiler
+uv run cldc check . --events-file .cldc-events.json --json --output artifacts/policy-report.json
+uv run cldc explain . --report-file artifacts/policy-report.json --format markdown --output artifacts/policy-explanation.md
+uv run cldc fix . --report-file artifacts/policy-report.json --format markdown --output artifacts/policy-fix-plan.md
 ```
 
-Set up a contributor checkout with the pinned Python and locked dev dependencies:
+- `--events-file` accepts `read_paths`, `write_paths`, `commands`, `claims`, or an `events` array with `read`, `write`, `command`, and `claim`.
+- `--output` writes the exact emitted payload to disk and creates parent directories automatically.
+- `explain` and `fix` consume the same saved JSON artifact without rerunning enforcement.
+
+### Gate a Staged Diff
 
 ```bash
-uv sync
-uv run cldc --version
-uv run pytest -q
+uv run cldc ci . --staged --json
 ```
 
-If you only want the local checkout as a CLI tool, install it into your user tool environment:
+- `ci` maps `git diff --cached --name-only` into policy `write_paths`.
+- Use `--base origin/main --head HEAD` for pull request range checks.
+- Blocking violations return exit code `2`; warning-only reports stay exit code `0`.
+
+### Catch a Hard Block
 
 ```bash
-uv tool install --editable .
+uv run cldc check tests/fixtures/repo_a --write generated/output.json --json
 ```
 
-`uv sync` creates `.venv`, installs the project in editable mode, and uses the committed `uv.lock` for repeatable contributor environments.
+- `deny_write` rules can block paths like `generated/**` directly from runtime evidence.
+- The JSON report carries a stable `$schema`, `format_version`, `decision`, `summary`, and per-rule provenance.
 
-## Build and release validation
-```bash
-uv build --clear
-uv run pytest -q
-uv run --isolated --no-project --with dist/*.whl tests/smoke_test.py
-uv run --isolated --no-project --with dist/*.tar.gz tests/smoke_test.py
+## Configuration / API
+
+Policy discovery walks up from the path you pass and looks for `CLAUDE.md`, `.claude-compiler.yaml` or `.yml`, `policies/*.yml` or `.yaml`, and `.claude/policy.lock.json`.
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| `--read <path>` | repeatable | Mark repo paths read before making a change. |
+| `--write <path>` | repeatable | Mark repo paths written or otherwise touched. |
+| `--command <cmd>` | repeatable | Record validation commands already run. |
+| `--events-file <file>` | none | Merge JSON execution evidence from disk. |
+| `--stdin-json` | `false` | Merge JSON execution evidence from stdin. |
+| `--staged` | `false` | In `ci`, evaluate `git diff --cached --name-only`. |
+| `--base <ref>` | none | In `ci`, evaluate a git diff range. |
+| `--head <ref>` | `HEAD` | Head ref paired with `--base`. |
+| `--report-file <file>` | none | In `explain` or `fix`, reuse a saved report artifact. |
+| `--format text\|markdown` | `text` | Human-readable render format for `explain` and `fix`. |
+| `--json` | `false` | Emit machine-readable JSON. |
+| `--output <path>` | none | Mirror stdout to a file and create parent directories. |
+
+## Deployment / Integration
+
+```yaml
+name: policy
+
+on:
+  pull_request:
+
+jobs:
+  cldc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v6
+
+      - run: uv sync
+      - run: uv run cldc compile .
+
+      - name: Enforce policy and keep the report
+        run: |
+          set +e
+          uv run cldc ci . --base origin/${{ github.base_ref }} --head ${{ github.sha }} --json --output artifacts/policy-report.json
+          status=$?
+          uv run cldc explain . --report-file artifacts/policy-report.json --format markdown --output artifacts/policy-explanation.md
+          exit $status
 ```
 
-Manual publishing stays one command after a successful build:
-
-```bash
-uv publish --dry-run
-uv publish
-```
-
-The repo also includes GitHub Actions workflows for CI and tag-driven PyPI publishing. Once PyPI trusted publishing is configured, shipping a release becomes:
-
-```bash
-git tag -a v0.1.0 -m v0.1.0
-git push --tags
-```
-
-## Local usage
-```bash
-cldc doctor .
-cldc compile .
-cldc check . --write src/app.py --read docs/rfcs/CLDC-0006-validator-engine.md --command "pytest -q"
-cldc check . --write /absolute/path/to/repo/src/app.py --json
-cldc check . --events-file .cldc-events.json --json
-printf '%s' '{"events":[{"kind":"write","path":"src/app.py"},{"kind":"command","command":"pytest -q"}]}' | cldc check . --stdin-json --json
-cldc ci . --staged --json
-cldc ci . --base origin/main --head HEAD --json
-cldc explain . --write src/app.py
-cldc explain . --events-file .cldc-events.json --format markdown
-cldc explain . --report-file policy-report.json --format markdown
-cldc fix . --write src/app.py --json
-cldc fix . --report-file policy-report.json --format markdown
-cldc check . --write generated/output.json --json
-cldc check . --write generated/output.json --json --output artifacts/policy-report.json
-cldc explain . --report-file artifacts/policy-report.json --format markdown --output artifacts/policy-explanation.md
-cldc fix . --report-file artifacts/policy-report.json --json --output artifacts/policy-fix-plan.json
-cldc doctor . --json
-```
-
-`cldc doctor` validates more than file presence: it inspects the existing lockfile for malformed JSON, schema / format drift, rule-count mismatches, repo-root mismatches, stale artifacts, and full source-digest drift so operators can catch content changes even when timestamps and rule counts still look plausible. It also returns a single recommended next action so operators know what to do next.
-
-`cldc check` loads the compiled lockfile and evaluates runtime evidence against the compiled policy. The current MVP covers `deny_write`, `require_read`, and `require_command`, emits stable JSON for automation, accepts both repo-relative and absolute in-repo paths, supports batch execution inputs from `--events-file` and `--stdin-json`, surfaces a deterministic summary plus a single recommended next action, and refuses to enforce stale, schema-drifted, or source-drifted lockfiles so CI does not silently trust outdated policy artifacts.
-
-`cldc ci` is the first git-aware wrapper around `cldc check`. It derives write paths from either `git diff --cached --name-only` (`--staged`) or `git diff --name-only <base>...<head>` (`--base` / `--head`), preserves the existing decision and violation JSON shape, appends git provenance, and now inherits the same explainable summary / next-action reporting as direct `cldc check` runs.
-
-`cldc explain` turns either fresh runtime evidence or a previously saved JSON policy report into a reviewer-friendly explanation with rule provenance, rationale, and recommended next steps. Policy report JSON emitted by `cldc check`, `cldc ci`, and `cldc explain --json` now carries its own `$schema` and `format_version` so saved artifacts stay explicit and machine-validated across releases, while `cldc explain` still accepts legacy unversioned reports generated before this contract landed.
-
-`cldc fix` is the first remediation-planning slice. It accepts either fresh runtime evidence or a saved policy report artifact, emits a versioned machine-readable fix-plan JSON contract, and renders deterministic text/Markdown guidance with linked files to inspect, suggested follow-up commands, and explicit next steps. The current slice is intentionally advisory only: it does not mutate the repo or run commands automatically.
-
-## Saved-artifact workflow
-```bash
-# 1. Compile once after policy changes
-cldc compile .
-
-# 2. Evaluate a real change and publish the machine-readable report artifact
-cldc check . --write generated/output.json --json --output artifacts/policy-report.json
-
-# 3. Render a reviewer-facing explanation from the saved report artifact
-cldc explain . --report-file artifacts/policy-report.json --format markdown --output artifacts/policy-explanation.md
-
-# 4. Generate a saved remediation plan from that same report artifact
-cldc fix . --report-file artifacts/policy-report.json --json --output artifacts/policy-fix-plan.json
-```
-
-`--output` writes the same content shown on stdout to disk and creates parent directories automatically, so CI or agent wrappers can publish stable artifacts without shell redirection tricks.
-
-## Shipping notes
-- `uv tool install claude-md-compiler` is the primary end-user install path once the package is published.
-- `uv sync` is the primary contributor setup path; it installs the project plus the `dev` dependency group from `uv.lock`.
-- `uv build --clear` produces both the wheel and source distribution in `dist/`.
-- `tests/smoke_test.py` is designed to run against the built wheel or sdist so packaging regressions fail before publishing.
-- `.github/workflows/publish.yml` expects a GitHub environment named `pypi` plus a matching PyPI trusted publisher configuration.
-- `cldc compile` must be rerun whenever policy sources change; the lockfile now carries a source digest and `doctor` / `check` will reject content drift even if timestamps are misleading.
-- `cldc check` expects paths to stay inside the discovered repo root and will reject paths that escape it.
-- `cldc check --events-file` and `cldc check --stdin-json` accept JSON shaped like `{"read_paths":[],"write_paths":[],"commands":[],"claims":[],"events":[...]}` where each event is a `read`, `write`, `command`, or `claim` object.
-- `cldc ci` requires either `--staged` or `--base` (optionally with `--head`) so git provenance stays explicit instead of relying on hidden diff heuristics.
-- `cldc explain` can either render fresh evidence inputs or a saved JSON report artifact, but it intentionally refuses to mix those modes in one invocation.
-- `cldc fix` follows the same input-mode split as `cldc explain`: use either fresh evidence flags or `--report-file` / `--stdin-report`, not both.
-- `--output` is available on every CLI command and writes the exact emitted payload/rendered text to a file while still printing it to stdout.
-- Saved policy report artifacts now include a top-level `$schema` plus `format_version`; `cldc explain` and `cldc fix` tolerate older unversioned artifacts for backwards compatibility, but new automation should keep the versioned fields intact.
-- `cldc doctor` is the fastest preflight when CI or local runs report lockfile drift.
+`cldc ci` is the enforcement edge. `cldc explain` turns the saved JSON into a review artifact before the job exits with the original policy status.
