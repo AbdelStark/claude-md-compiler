@@ -4,6 +4,11 @@ __pycache__/
 dist/
 build/
 .pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.ruff_cache/
 .venv/
 .env
 .env.*

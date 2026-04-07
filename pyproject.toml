@@ -40,6 +40,10 @@ Issues = "https://github.com/AbdelStark/claude-md-compiler/issues"
 [dependency-groups]
 dev = [
   "pytest>=8.0",
+  "pytest-cov>=5",
+  "ruff>=0.6",
+  "pyright>=1.1",
+  "types-PyYAML>=6",
 ]
 
 [project.scripts]
@@ -50,8 +54,47 @@ module-name = "cldc"
 source-include = [
   "docs/**",
   "tests/**",
+  "src/cldc/py.typed",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+addopts = "-q --strict-markers"
+markers = [
+  "benchmark: performance benchmark tests (run with --benchmark-only)",
+  "slow: tests that take more than a second",
+]
+filterwarnings = [
+  "error",
+  "ignore::DeprecationWarning",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.ruff.format]
+
+[tool.pyright]
+include = ["src"]
+pythonVersion = "3.11"
+typeCheckingMode = "standard"
+reportMissingTypeStubs = false
+
+[tool.coverage.run]
+source = ["src/cldc"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover",
+  "raise NotImplementedError",
+  "if TYPE_CHECKING:",
+]
+show_missing = true
+skip_covered = false
