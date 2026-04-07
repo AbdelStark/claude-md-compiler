@@ -246,6 +246,10 @@ uv run cldc fix tests/fixtures/repo_a --write src/main.py --json
 
 The repository does not require runtime environment variables.
 
+## Learn More
+
+- [ARCHITECTURE.md](./ARCHITECTURE.md) — layered design, data flow, schema contracts, and extension points
+- [CHANGELOG.md](./CHANGELOG.md) — release history in Keep a Changelog format
 
 ## License
 
