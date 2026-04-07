@@ -12,20 +12,6 @@
 - Platform or infra teams that want repo-level guardrails.
 - Maintainers who want explainable, local-first policy checks instead of hidden heuristics.
 
-## Current Status
-
-As of April 7, 2026, `claude-md-compiler` is **alpha**. It is suitable for local CLI use and CI gating in repositories that want executable policy over file writes, required reads, required commands, and coupled file changes. It is not yet suitable for hosted multi-tenant deployments, large-repo topology analysis, automatic mutation of the repo, or policy decisions based on richer transcript semantics than explicit read/write/command events.
-
-Known limitations:
-
-- `claim` events are recorded in reports but are not enforced yet.
-- Rule matching is currently glob-based for paths and exact-string based for commands.
-- There is no built-in autofix execution; `cldc fix` generates a plan only.
-- The project does not yet ship preset policy packs or GitHub-native review integrations.
-- CI currently enforces tests and packaging, but not coverage thresholds or a separate lint/type-check gate.
-
-Breaking changes in the next release: none planned, but this is still an alpha project and contracts may tighten before `1.0`.
-
 ## Install
 
 `cldc` requires Python 3.11+.
@@ -172,8 +158,6 @@ cldc fix . --report-file artifacts/policy-report.json --json --output artifacts/
 - `src/cldc/runtime/`: evaluate evidence, render reports, build fix plans, and integrate with git.
 - `src/cldc/cli/`: expose the commands and exit-code behavior.
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full module map, invariants, and operator runbook.
-
 ## Development
 
 ```bash
@@ -197,30 +181,6 @@ uv run cldc fix tests/fixtures/repo_a --write src/main.py --json
 
 The repository does not require runtime environment variables.
 
-## Contributing
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md). In short:
-
-- use `uv sync --locked`
-- add or update tests with every behavior change
-- keep RFCs in `docs/rfcs/` stable unless the spec itself is being revised
-- update `README.md`, `CLAUDE.md`, and `CHANGELOG.md` when the public surface changes
-
-## Roadmap
-
-1. Policy surface hardening
-   Exit criteria: fully documented semantics for every shipped rule kind and enforcement mode, plus regression coverage for malformed or tampered lockfiles.
-2. Quality gates
-   Exit criteria: add explicit lint/type/coverage policy to CI and document the supported quality bar for contributors.
-3. Integrations and scale
-   Exit criteria: preset packs, GitHub-native review/report flows, and better large-repo heuristics without weakening deterministic behavior.
-
-## Help
-
-- Issues: <https://github.com/AbdelStark/claude-md-compiler/issues>
-- Repository: <https://github.com/AbdelStark/claude-md-compiler>
-- Architecture guide: [ARCHITECTURE.md](./ARCHITECTURE.md)
-- Changelog: [CHANGELOG.md](./CHANGELOG.md)
 
 ## License
 
