@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- New `cldc init` command — scaffolds a repo's `.claude-compiler.yaml`
+  from one or more bundled presets (`--preset default --preset strict`,
+  repeatable) and writes a stub `CLAUDE.md` if none exists. Never
+  overwrites an existing `CLAUDE.md`; refuses to clobber an existing
+  `.claude-compiler.yaml` unless `--force` is passed. `--json` emits a
+  machine-readable init report with `created`/`updated`/`skipped`
+  lists and a `next_action` hint pointing at `cldc compile`. Backed by
+  a new `cldc.scaffold` module with `initialize_repo_policy` and
+  `InitReport`.
 - New `forbid_command` rule kind — the inverse of `require_command`.
   Fires when any of the listed `commands` is observed in the runtime
   evidence and, if `when_paths` is specified, any write path matches

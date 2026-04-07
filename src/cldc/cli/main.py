@@ -14,6 +14,7 @@ from cldc.runtime.events import EMPTY_EXECUTION_INPUTS, load_execution_inputs_fi
 from cldc.runtime.git import collect_git_write_paths
 from cldc.runtime.remediation import build_fix_plan, render_fix_plan
 from cldc.runtime.reporting import load_check_report_file, load_check_report_text, render_check_report
+from cldc.scaffold import initialize_repo_policy
 
 
 def _add_json_flag(parser: argparse.ArgumentParser) -> None:
@@ -99,6 +100,33 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    init_parser = subparsers.add_parser(
+        "init",
+        help="Scaffold .claude-compiler.yaml (and a stub CLAUDE.md) for a new repo",
+        description=(
+            "Scaffold a minimal `.claude-compiler.yaml` that extends one or more "
+            "bundled presets. Also writes a stub `CLAUDE.md` if none exists. "
+            "Never overwrites an existing `CLAUDE.md`; refuses to overwrite an "
+            "existing `.claude-compiler.yaml` unless --force is passed."
+        ),
+    )
+    init_parser.add_argument("repo", nargs="?", default=".", help="Target repo root (must exist)")
+    init_parser.add_argument(
+        "--preset",
+        action="append",
+        default=None,
+        dest="init_presets",
+        help="Bundled preset to extend; repeat for multiple presets (default: default)",
+    )
+    init_parser.add_argument(
+        "--force",
+        action="store_true",
+        dest="init_force",
+        help="Overwrite an existing .claude-compiler.yaml in the target repo",
+    )
+    _add_json_flag(init_parser)
+    _add_output_flag(init_parser)
 
     compile_parser = subparsers.add_parser(
         "compile",
@@ -222,6 +250,26 @@ def _output_text(text: str, output_path: str | None = None) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
         normalized_text = text if text.endswith("\n") else f"{text}\n"
         target.write_text(normalized_text, encoding="utf-8")
+
+
+def _render_init_result(report, json_output: bool) -> str:
+    if json_output:
+        return json.dumps(report.to_dict(), indent=2, sort_keys=True)
+    lines = [
+        f"Initialized cldc policy for {report.repo_root}",
+        f"Extends: {', '.join(report.presets)}",
+    ]
+    if report.created:
+        lines.append("Created:")
+        lines.extend(f"- {name}" for name in report.created)
+    if report.updated:
+        lines.append("Updated:")
+        lines.extend(f"- {name}" for name in report.updated)
+    if report.skipped:
+        lines.append("Skipped (already present):")
+        lines.extend(f"- {name}" for name in report.skipped)
+    lines.append(f"Next action: {report.next_action}")
+    return "\n".join(lines)
 
 
 def _render_compile_result(compiled, json_output: bool) -> str:
@@ -456,6 +504,14 @@ def main(argv: list[str] | None = None) -> int:
     configure_cli_logging(verbose=args.verbose, quiet=args.quiet)
 
     try:
+        if args.command == "init":
+            report = initialize_repo_policy(
+                Path(args.repo),
+                presets=args.init_presets,
+                force=args.init_force,
+            )
+            _output_text(_render_init_result(report, args.json_output), args.output_path)
+            return 0
         if args.command == "compile":
             compiled = compile_repo_policy(Path(args.repo))
             _output_text(_render_compile_result(compiled, args.json_output), args.output_path)
