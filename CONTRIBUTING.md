@@ -70,3 +70,23 @@ uv run pytest -q
 uv build
 uv run cldc --version
 ```
+
+## Local quality gates
+
+The `Makefile` provides a single command for the full local gate:
+
+```bash
+make all
+```
+
+Individual targets:
+
+- `make install` — sync the locked dev env
+- `make test` — run the pytest suite
+- `make lint` / `make fmt` / `make fmt-check` — ruff lint and format
+- `make typecheck` — pyright
+- `make cover` — pytest with coverage
+- `make build` / `make smoke` — wheel + sdist build and smoke test
+- `make clean` — remove build/cache artifacts
+
+Run `make help` for the full target list.
