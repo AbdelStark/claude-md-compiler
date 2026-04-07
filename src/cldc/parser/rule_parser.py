@@ -42,6 +42,7 @@ class RuleDefinition:
     source_block_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable dict with `id` as the first key."""
         payload = asdict(self)
         return {"id": payload.pop("rule_id"), **payload}
 
@@ -54,6 +55,7 @@ class ParsedPolicy:
     rules: list[RuleDefinition]
 
     def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable dict of the default mode and every rule."""
         return {
             "default_mode": self.default_mode,
             "rules": [rule.to_dict() for rule in self.rules],

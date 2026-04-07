@@ -50,6 +50,7 @@ class Violation:
     source_block_id: str | None
 
     def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable dict of every violation field."""
         return asdict(self)
 
 
@@ -70,6 +71,12 @@ class CheckReport:
     violations: list[Violation]
 
     def to_dict(self) -> dict[str, Any]:
+        """Return the versioned JSON-serializable report payload.
+
+        The shape is the normative `policy-report/v1` schema documented in
+        `docs/rfcs/CLDC-0002-check-report.md`. Every key is always present;
+        absent-by-default values are zero-length lists rather than `None`.
+        """
         return {
             "$schema": CHECK_REPORT_SCHEMA,
             "format_version": CHECK_REPORT_FORMAT_VERSION,

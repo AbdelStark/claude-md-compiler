@@ -35,6 +35,7 @@ class CompiledPolicy:
     discovery: dict[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable dict of every field."""
         return asdict(self)
 
 
@@ -59,6 +60,7 @@ class DoctorReport:
     discovery: dict[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable dict of every field."""
         return asdict(self)
 
 

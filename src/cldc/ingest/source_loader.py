@@ -28,6 +28,7 @@ class PolicySource:
     line_start: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable dict of every field."""
         return asdict(self)
 
 
@@ -40,6 +41,7 @@ class SourceBundle:
     discovery: DiscoveryResult
 
     def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable dict with repo root, discovery, and sources."""
         return {
             "repo_root": self.repo_root,
             "discovery": self.discovery.to_dict(),

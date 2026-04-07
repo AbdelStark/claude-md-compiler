@@ -20,6 +20,14 @@ class ExecutionInputs:
     claims: list[str]
 
     def merged_with(self, other: ExecutionInputs) -> ExecutionInputs:
+        """Return a new `ExecutionInputs` with the fields of `self` followed by `other`.
+
+        Order is preserved (self first, then other) and no deduplication is
+        performed — duplicates are the caller's responsibility. Used by the
+        CLI to merge explicit `--read`/`--write`/`--command`/`--claim` flags
+        with an events-file or stdin payload.
+        """
+
         return ExecutionInputs(
             read_paths=[*self.read_paths, *other.read_paths],
             write_paths=[*self.write_paths, *other.write_paths],

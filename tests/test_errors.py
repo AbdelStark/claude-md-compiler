@@ -9,6 +9,7 @@ import pytest
 from cldc import (
     CldcError,
     EvidenceError,
+    GitError,
     LockfileError,
     PolicySourceError,
     PresetError,
@@ -18,11 +19,13 @@ from cldc import (
     RuleValidationError,
 )
 from cldc.compiler.policy_compiler import compile_repo_policy
+from cldc.ingest.discovery import discover_policy_repo
 from cldc.ingest.source_loader import load_policy_sources
 from cldc.parser.rule_parser import parse_rule_documents
 from cldc.presets import load_preset
 from cldc.runtime.evaluator import check_repo_policy
 from cldc.runtime.events import load_execution_inputs
+from cldc.runtime.git import collect_git_write_paths
 
 
 def test_cldc_error_subclasses_value_error():
@@ -36,8 +39,43 @@ def test_cldc_error_subclasses_value_error():
     assert issubclass(ReportError, CldcError)
     assert issubclass(PresetError, CldcError)
     assert issubclass(RepoBoundaryError, CldcError)
+    assert issubclass(GitError, CldcError)
     assert issubclass(PresetNotFoundError, PresetError)
     assert issubclass(PresetNotFoundError, LookupError)
+
+
+def test_discover_policy_repo_error_is_actionable(tmp_path):
+    """FileNotFoundError from discovery must include both the missing path and a hint."""
+
+    missing = tmp_path / "does-not-exist"
+    with pytest.raises(FileNotFoundError) as excinfo:
+        discover_policy_repo(missing)
+
+    message = str(excinfo.value)
+    assert "Repo path not found" in message
+    assert str(missing) in message
+    assert "CLAUDE.md" in message  # actionable next step
+
+
+def test_git_error_for_conflicting_flags(tmp_path):
+    (tmp_path / "CLAUDE.md").write_text("# repo\n", encoding="utf-8")
+
+    with pytest.raises(GitError, match="either --staged or --base/--head"):
+        collect_git_write_paths(tmp_path, staged=True, base="HEAD")
+
+
+def test_git_error_for_missing_selection(tmp_path):
+    (tmp_path / "CLAUDE.md").write_text("# repo\n", encoding="utf-8")
+
+    with pytest.raises(GitError, match="requires either --staged or --base"):
+        collect_git_write_paths(tmp_path)
+
+
+def test_git_error_for_head_without_base(tmp_path):
+    (tmp_path / "CLAUDE.md").write_text("# repo\n", encoding="utf-8")
+
+    with pytest.raises(GitError, match="cannot use --head without --base"):
+        collect_git_write_paths(tmp_path, head="HEAD")
 
 
 def test_policy_source_error_for_malformed_extends(tmp_path):

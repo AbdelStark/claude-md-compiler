@@ -141,6 +141,12 @@ def load_check_report(payload: Any) -> dict[str, Any]:
 
 
 def load_check_report_file(path: Path | str) -> dict[str, Any]:
+    """Load and validate a saved policy report JSON file.
+
+    Raises `FileNotFoundError` if `path` does not exist and `ReportError`
+    if the file is not valid JSON or fails schema validation.
+    """
+
     file_path = Path(path)
     try:
         payload = json.loads(file_path.read_text(encoding="utf-8"))
@@ -152,6 +158,12 @@ def load_check_report_file(path: Path | str) -> dict[str, Any]:
 
 
 def load_check_report_text(text: str, *, source: str = "stdin") -> dict[str, Any]:
+    """Parse and validate a policy report JSON string (stdin or inline).
+
+    `source` is used purely for the error message, so stdin errors can be
+    distinguished from `--stdin-report` wire failures.
+    """
+
     try:
         payload = json.loads(text)
     except json.JSONDecodeError as exc:

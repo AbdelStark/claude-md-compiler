@@ -95,11 +95,17 @@ behavior you see on screen is the behavior a `cldc check` in CI would produce.
 
 Exit codes:
 
-- `0`: clean or non-blocking result
-- `1`: runtime or input error
-- `2`: blocking policy violations
+- `0`: clean or non-blocking result (decisions `pass` or `warn`)
+- `1`: runtime or input error (malformed repo, bad evidence payload, git failure, etc.)
+- `2`: blocking policy violations (decisions `block`)
 
-Every command supports `--json`, and every command can also persist its output with `--output <file>`.
+Every command supports `--json`, and every command can also persist its output with `--output <file>`. When a command fails (exit 1), the `--json` error payload carries `error_type` (the exception class, e.g. `LockfileError`, `GitError`, `FileNotFoundError`) so machine consumers can route on the failure mode without regex-parsing the message.
+
+Global flags on the top-level `cldc` command:
+
+- `--verbose`, `-v`: emit debug-level diagnostics to stderr and print the full traceback on errors. Use this when filing bugs.
+- `--quiet`, `-q`: suppress warnings, leaving only errors.
+- `--version`: print the package version.
 
 ## How Policy Is Authored
 

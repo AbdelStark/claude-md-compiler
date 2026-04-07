@@ -38,6 +38,7 @@ class PresetMetadata:
     path: Path
 
     def to_dict(self) -> dict[str, str]:
+        """Return `{"name": ..., "path": ...}` for JSON output."""
         return {"name": self.name, "path": str(self.path)}
 
 

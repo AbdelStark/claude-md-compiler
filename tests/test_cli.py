@@ -1189,6 +1189,64 @@ def test_cli_fix_command_renders_require_claim_remediation(tmp_path):
     assert "**Suggested claims:** `qa-reviewed`" in fix_result.stdout
 
 
+def test_cli_verbose_emits_traceback_on_error(tmp_path):
+    """`cldc --verbose` must surface the full traceback so errors are debuggable."""
+
+    nonexistent = tmp_path / "does-not-exist"
+
+    result = subprocess.run(
+        [sys.executable, "-m", "cldc.cli.main", "--verbose", "compile", str(nonexistent)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+
+    assert result.returncode == 1
+    assert "Repo path not found" in result.stderr
+    assert "Traceback (most recent call last)" in result.stderr
+    assert "FileNotFoundError" in result.stderr
+
+
+def test_cli_default_error_hides_traceback(tmp_path):
+    """Without `--verbose` the CLI emits a single-line error, no traceback."""
+
+    nonexistent = tmp_path / "does-not-exist"
+
+    result = subprocess.run(
+        [sys.executable, "-m", "cldc.cli.main", "compile", str(nonexistent)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+
+    assert result.returncode == 1
+    assert "Repo path not found" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+def test_cli_json_error_payload_includes_error_type(tmp_path):
+    """`--json` error payloads include the exception class name for machine routing."""
+
+    nonexistent = tmp_path / "does-not-exist"
+
+    result = subprocess.run(
+        [sys.executable, "-m", "cldc.cli.main", "compile", str(nonexistent), "--json"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stderr)
+    assert payload["ok"] is False
+    assert payload["command"] == "compile"
+    assert payload["error_type"] == "FileNotFoundError"
+    assert "Repo path not found" in payload["error"]
+
+
 def test_cli_help_exposes_version_and_absolute_path_support():
     result = subprocess.run(
         [sys.executable, "-m", "cldc.cli.main", "check", "--help"],

@@ -19,6 +19,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `asyncio_mode = "auto"` so `async def test_*` drivers work transparently.
 - `tests/test_tui.py` with Pilot-based smoke tests for the state module,
   the reactive app mount, and the compile/run-check/clear-evidence bindings.
+- `GitError` exception class in `cldc.errors` for git-related failures
+  surfaced by `cldc ci`. Inherits from `CldcError` → `ValueError`, so
+  existing `except ValueError` consumers keep working.
+- `--json` error payloads now include `error_type` (the exception class
+  name) so machine consumers can branch without regex-parsing the message.
+- `--verbose` now prints the full traceback on errors (text and JSON
+  modes). Without `--verbose` the CLI still emits a single-line message.
+- `.pre-commit-config.yaml` with ruff lint + format, trailing-whitespace,
+  EOF-fixer, YAML/TOML syntax, large-file, and merge-conflict checks.
+  Install with `uvx pre-commit install`.
+
+### Changed
+
+- `discover_policy_repo` now raises `FileNotFoundError` with an actionable
+  message (`"Repo path not found: <path> — pass an existing directory…"`)
+  instead of just the raw path. Every CLI command surfaces this
+  improved error.
+- `src/cldc/runtime/git.py` now raises typed `GitError` instead of raw
+  `ValueError` for invalid flag combinations, git command failures, and
+  missing git binary on PATH. The flag-validation order was also swapped
+  so `--head` without `--base` is reported as "cannot use --head without
+  --base" instead of the less-specific "requires either --staged or
+  --base" message.
+
+### Fixed
+
+- `doctor_repo_policy` no longer crashes on repos that extend a bundled
+  preset. The staleness check now skips sources whose path starts with
+  `preset:`, mirroring the fix already landed in
+  `runtime/evaluator.py::_validate_lockfile_freshness`.
+- 100% docstring coverage on every public, non-TUI class and function in
+  `src/cldc/` (up from ~52%). All `to_dict` methods, `ExecutionInputs.merged_with`,
+  `load_check_report_file`, and `load_check_report_text` now have a
+  documented contract.
 
 ## [0.1.1] - 2026-04-07
 

@@ -24,6 +24,7 @@ class DiscoveryResult:
     warnings: list[str]
 
     def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable dict of every field."""
         return asdict(self)
 
 
@@ -37,11 +38,26 @@ def _list_default_policy_paths(root: Path) -> list[str]:
 
 
 def discover_policy_repo(start_path: Path | str) -> DiscoveryResult:
-    """Walk up from a path until a repository with policy markers is found."""
+    """Walk up from a path until a repository with policy markers is found.
+
+    A "policy marker" is a `CLAUDE.md`, a `.claude-compiler.yaml`/`.yml`, or
+    a `policies/*.yml` file. Discovery starts at `start_path` and walks up
+    the directory tree until a marker is found or the filesystem root is
+    reached; the returned `DiscoveryResult` records which markers were
+    present and which are missing so callers can emit actionable warnings.
+
+    Raises:
+        FileNotFoundError: `start_path` does not exist on disk. The error
+            message includes the resolved path plus a hint about passing an
+            existing directory, so the CLI shell can surface it as-is.
+    """
 
     original = Path(start_path)
     if not original.exists():
-        raise FileNotFoundError(original)
+        raise FileNotFoundError(
+            f"Repo path not found: {original} — pass an existing directory inside a repo with a CLAUDE.md, "
+            f".claude-compiler.yaml, or policies/*.yml"
+        )
 
     cursor = original.resolve()
     if cursor.is_file():

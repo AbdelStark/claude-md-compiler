@@ -518,20 +518,26 @@ def main(argv: list[str] | None = None) -> int:
             return run_tui(Path(args.repo))
     except Exception as exc:
         if getattr(args, "json_output", False):
+            error_payload: dict[str, object] = {
+                "command": args.command,
+                "ok": False,
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+            }
+            if getattr(args, "verbose", False):
+                import traceback
+
+                error_payload["traceback"] = traceback.format_exc().rstrip()
             print(
-                json.dumps(
-                    {
-                        "command": args.command,
-                        "ok": False,
-                        "error": str(exc),
-                    },
-                    indent=2,
-                    sort_keys=True,
-                ),
+                json.dumps(error_payload, indent=2, sort_keys=True),
                 file=sys.stderr,
             )
         else:
             print(f"{args.command} failed: {exc}", file=sys.stderr)
+            if getattr(args, "verbose", False):
+                import traceback
+
+                traceback.print_exc(file=sys.stderr)
         return 1
 
     parser.error(f"unknown command: {args.command}")

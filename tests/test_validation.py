@@ -80,11 +80,12 @@ def test_cli_returns_json_error_payload_on_bad_input(tmp_path):
 
     assert result.returncode == 1
     payload = json.loads(result.stderr)
-    assert payload == {
-        "command": "compile",
-        "error": "rule 'broken' kind is required",
-        "ok": False,
-    }
+    assert payload["command"] == "compile"
+    assert payload["ok"] is False
+    assert payload["error"] == "rule 'broken' kind is required"
+    # `error_type` is surfaced so callers can branch on the exception class
+    # without regex-parsing the message.
+    assert payload["error_type"] == "RuleValidationError"
 
 
 def test_compiler_emits_lockfile_schema_version(tmp_path):

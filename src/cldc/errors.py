@@ -42,3 +42,7 @@ class PresetNotFoundError(PresetError, LookupError):
 
 class RepoBoundaryError(CldcError):
     """Raised when a runtime evidence path resolves outside the repo root."""
+
+
+class GitError(CldcError):
+    """Raised when a `git` invocation or argument combination fails during `cldc ci`."""

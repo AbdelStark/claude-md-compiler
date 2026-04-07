@@ -7,6 +7,7 @@ from pathlib import Path
 from cldc.errors import (
     CldcError,
     EvidenceError,
+    GitError,
     LockfileError,
     PolicySourceError,
     PresetError,
@@ -37,6 +38,7 @@ except PackageNotFoundError:
 __all__ = [
     "CldcError",
     "EvidenceError",
+    "GitError",
     "LockfileError",
     "PolicySourceError",
     "PresetError",
