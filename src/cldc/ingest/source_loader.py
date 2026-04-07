@@ -9,8 +9,11 @@ from pathlib import PurePosixPath
 
 import yaml
 
+from cldc._logging import get_logger
 from cldc.ingest.discovery import DEFAULT_POLICY_GLOBS, DiscoveryResult, discover_policy_repo
 from cldc.presets import PRESET_SOURCE_KIND, PresetNotFoundError, load_preset, preset_path
+
+logger = get_logger(__name__)
 
 SOURCE_PRECEDENCE = ["claude_md", "inline_block", "compiler_config", PRESET_SOURCE_KIND, "policy_file"]
 
@@ -125,6 +128,7 @@ def _load_preset_sources(preset_names: list[str]) -> list[PolicySource]:
             resolved_path = preset_path(name)
         except PresetNotFoundError as exc:
             raise ValueError(str(exc)) from exc
+        logger.debug("resolved preset %s -> %s", name, resolved_path)
         sources.append(
             PolicySource(
                 kind=PRESET_SOURCE_KIND,
@@ -176,4 +180,5 @@ def load_policy_sources(repo_root: Path | str) -> SourceBundle:
                     PolicySource(kind="policy_file", path=rel, content=policy_path.read_text(encoding="utf-8"))
                 )
 
+    logger.debug("loaded %d sources from %s", len(sources), root)
     return SourceBundle(repo_root=str(root), sources=sources, discovery=discovery)

@@ -11,6 +11,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from cldc._logging import get_logger
+
+logger = get_logger(__name__)
+
 PRESET_SOURCE_KIND = "preset"
 _PACKS_DIR = Path(__file__).parent / "packs"
 _PRESET_SUFFIX = ".yml"
@@ -39,6 +43,7 @@ def list_presets() -> list[PresetMetadata]:
     """Return every bundled preset, sorted by name for deterministic output."""
 
     packs_dir = _packs_dir()
+    logger.debug("listing presets from %s", packs_dir)
     if not packs_dir.is_dir():
         return []
     entries: list[PresetMetadata] = []
@@ -60,6 +65,7 @@ def preset_path(name: str) -> Path:
         raise PresetNotFoundError(
             f"preset {cleaned!r} is not bundled with this cldc version; available: {available}"
         )
+    logger.debug("loading preset %s from %s", cleaned, candidate)
     return candidate
 
 

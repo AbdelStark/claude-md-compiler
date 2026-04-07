@@ -7,12 +7,15 @@ from json import JSONDecodeError
 from pathlib import Path
 from typing import Any
 
+from cldc._logging import get_logger
 from cldc.compiler.policy_compiler import LOCKFILE_FORMAT_VERSION, LOCKFILE_SCHEMA, _compute_source_digest
 from cldc.ingest.discovery import LOCKFILE_PATH, discover_policy_repo
 from cldc.ingest.source_loader import load_policy_sources
 from cldc.parser.rule_parser import parse_rule_documents
 from cldc.runtime.events import EMPTY_EXECUTION_INPUTS, load_execution_inputs
 from cldc.runtime.report_schema import CHECK_REPORT_FORMAT_VERSION, CHECK_REPORT_SCHEMA
+
+logger = get_logger(__name__)
 
 BLOCKING_MODES = {"block", "fix"}
 NON_BLOCKING_MODES = {"observe", "warn"}
@@ -194,6 +197,7 @@ def _load_lockfile(repo_root: Path) -> dict[str, Any]:
             "compiled lockfile rule_count does not match the embedded rules; re-run `cldc compile`"
         )
 
+    logger.debug("loaded lockfile with %d rules from %s", len(rules), lockfile)
     return payload
 
 
@@ -324,8 +328,10 @@ def _build_violation(
         required_commands=normalized_required_commands,
         required_claims=normalized_required_claims,
     )
+    rule_id = str(rule.get("id", "<unknown>"))
+    logger.debug("rule %s fired: %d matched paths", rule_id, len(normalized_matched_paths))
     return Violation(
-        rule_id=str(rule.get("id", "<unknown>")),
+        rule_id=rule_id,
         kind=str(rule.get("kind", "<unknown>")),
         mode=_effective_mode(rule, default_mode),
         message=str(rule.get("message", "")),
@@ -494,6 +500,12 @@ def check_repo_policy(
         ok = True
 
     violation_count = len(violations)
+    logger.debug(
+        "check complete: decision=%s violations=%d blocking=%d",
+        decision,
+        violation_count,
+        blocking_violation_count,
+    )
     return CheckReport(
         ok=ok,
         repo_root=str(root),

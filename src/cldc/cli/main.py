@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 
 from cldc import __version__
+from cldc._logging import configure_cli_logging
 from cldc.compiler.policy_compiler import compile_repo_policy, doctor_repo_policy
 from cldc.presets import PresetNotFoundError, list_presets, load_preset, preset_path
 from cldc.runtime.evaluator import check_repo_policy
@@ -58,6 +59,25 @@ def build_parser() -> argparse.ArgumentParser:
         description="Compile and enforce repository policy derived from CLAUDE.md.",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    verbosity = parser.add_mutually_exclusive_group()
+    verbosity.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help=(
+            "Emit debug-level diagnostics to stderr. Place before the subcommand "
+            "(for example `cldc --verbose compile .`)."
+        ),
+    )
+    verbosity.add_argument(
+        "--quiet",
+        "-q",
+        action="store_true",
+        help=(
+            "Suppress warnings and info output, leaving only errors. Place before "
+            "the subcommand (for example `cldc --quiet compile .`)."
+        ),
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     compile_parser = subparsers.add_parser(
@@ -411,6 +431,7 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = build_parser()
     args = parser.parse_args(argv)
+    configure_cli_logging(verbose=args.verbose, quiet=args.quiet)
 
     try:
         if args.command == "compile":
