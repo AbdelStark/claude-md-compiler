@@ -2,7 +2,7 @@
 # Usage: `make <target>`. Run `make help` for the full target list.
 
 .DEFAULT_GOAL := help
-.PHONY: help install test lint fmt fmt-check typecheck cover build clean smoke tui all
+.PHONY: help install test e2e lint fmt fmt-check typecheck cover build clean smoke tui all
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-12s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -10,8 +10,11 @@ help: ## Show this help
 install: ## Sync the locked dev environment
 	uv sync --locked
 
-test: ## Run the full pytest suite (quiet)
+test: ## Run the full pytest suite (quiet, excludes e2e and benchmarks)
 	uv run pytest -q
+
+e2e: ## Run end-to-end tests against real upstream repos (clones langchain, ~60s)
+	uv run pytest -m e2e -v
 
 lint: ## Run ruff lint checks against src + tests
 	uvx --from 'ruff>=0.6' ruff check src tests

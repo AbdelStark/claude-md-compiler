@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- End-to-end test suite under `tests/e2e/` that clones
+  `langchain-ai/langchain`, drops a hand-authored `.claude-compiler.yaml`
+  (`tests/e2e/compiler.yaml`) translating langchain's CLAUDE.md prose
+  into enforceable cldc rules, and walks the full compile → check → fix
+  flow with red/green coverage. Marked `@pytest.mark.e2e` and excluded
+  from the default pytest run; opt-in via `make e2e` or
+  `uv run pytest -m e2e`. 9 tests, ~10s wall time including the shallow
+  clone.
+- `e2e` pytest marker registered in `[tool.pytest.ini_options].markers`
+  and excluded from `addopts` so the default suite stays fast.
+- `make e2e` Makefile target.
+- The bundled `default` preset's `preset-default-generated-read-only`
+  rule now also blocks `**/dist/**`, `**/build/**`, and `**/generated/**`
+  in addition to the top-level paths. The lockfile-sync `require_command`
+  rule now also matches `**/pyproject.toml`, `**/package.json`, etc.
+  This makes the preset usable in monorepos (each package keeps its own
+  dist/ and pyproject.toml).
 - `cldc tui` — interactive Textual-based terminal UI. Launches a three-pane
   policy explorer (sources / rules / detail) with a four-field evidence
   form and a colored decision panel. Keybindings: `c` compile, `r` run

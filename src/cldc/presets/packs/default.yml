@@ -9,9 +9,16 @@ rules:
     kind: deny_write
     mode: block
     paths:
+      # Top-level output directories.
       - "generated/**"
       - "dist/**"
       - "build/**"
+      # Nested under any prefix — required for monorepos where each
+      # package keeps its own dist/, build/, or generated/ directory.
+      - "**/generated/**"
+      - "**/dist/**"
+      - "**/build/**"
+      # Files explicitly flagged as generated regardless of directory.
       - "**/*.generated.*"
     message: Generated artifacts are managed by the build; edit the source, not the output.
 
@@ -24,6 +31,11 @@ rules:
       - "Cargo.toml"
       - "go.mod"
       - "requirements.txt"
+      - "**/package.json"
+      - "**/pyproject.toml"
+      - "**/Cargo.toml"
+      - "**/go.mod"
+      - "**/requirements.txt"
     commands:
       - "npm install"
       - "pnpm install"

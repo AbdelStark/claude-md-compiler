@@ -64,9 +64,10 @@ source-include = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "-q --strict-markers --benchmark-skip"
+addopts = "-q --strict-markers --benchmark-skip -m 'not e2e'"
 markers = [
   "benchmark: performance benchmarks (run with --benchmark-only)",
+  "e2e: end-to-end tests that clone real upstream repos; opt-in via `make e2e` or `pytest -m e2e`",
   "slow: tests that take more than a second",
 ]
 asyncio_mode = "auto"

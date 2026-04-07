@@ -1,0 +1,80 @@
+# Translation of langchain-ai/langchain's CLAUDE.md expectations into
+# enforceable cldc rules.
+#
+# Each rule is grounded in a specific line or section of the langchain
+# CLAUDE.md (https://github.com/langchain-ai/langchain/blob/master/CLAUDE.md).
+# This file is what the e2e test drops into a cloned langchain worktree
+# before calling `cldc compile`. It is intentionally standalone so it can
+# be reviewed without running any tests — a langchain maintainer could
+# copy it verbatim.
+
+default_mode: warn
+
+# Bundled presets:
+# - `default` provides the baseline guardrails every repo wants: no
+#   writes to generated/**/dist/**/build/**, and manifests must sync
+#   their lockfiles.
+extends:
+  - default
+
+rules:
+  # ---- "Every new feature or bugfix MUST be covered by unit tests." ----
+  #
+  # langchain CLAUDE.md, §Testing requirements. Applies to the core
+  # package; the couple_change rule requires that any write under
+  # libs/core/langchain_core/** is accompanied by a write under
+  # libs/core/tests/** in the same evaluation.
+  - id: langchain-tests-follow-core-source
+    kind: couple_change
+    mode: block
+    paths:
+      - "libs/core/langchain_core/**"
+    when_paths:
+      - "libs/core/tests/**"
+    message: "Every change to libs/core/langchain_core must come with a matching tests/ update (langchain CLAUDE.md §Testing requirements)."
+
+  # ---- "Always attempt to preserve function signatures." ----
+  #
+  # langchain CLAUDE.md, §Maintain stable public interfaces. We enforce
+  # this by requiring agents to have read either the package manifest or
+  # the public __init__.py before editing core source, so any stability
+  # implications of the edit are surfaced before the write.
+  - id: langchain-read-manifest-before-core-edit
+    kind: require_read
+    mode: warn
+    paths:
+      - "libs/core/langchain_core/**"
+    before_paths:
+      - "libs/core/pyproject.toml"
+      - "libs/core/langchain_core/__init__.py"
+    message: "Read libs/core/pyproject.toml or langchain_core/__init__.py before editing core source so exported interfaces stay stable."
+
+  # ---- "Always add a disclaimer ... mentioning AI agents." ----
+  #
+  # langchain CLAUDE.md, §Pull request guidelines. The claim is a
+  # first-class evidence kind in cldc, so agents can assert it via
+  # --claim ai-agent-disclosed once the PR description has been updated.
+  - id: langchain-require-ai-disclosure
+    kind: require_claim
+    mode: block
+    when_paths:
+      - "libs/core/langchain_core/**"
+      - "libs/langchain_v1/**"
+    claims:
+      - "ai-agent-disclosed"
+    message: "langchain PR policy requires an 'ai-agent-disclosed' claim on any libs/**/langchain_core or libs/langchain_v1 change."
+
+  # ---- "Run unit tests (no network)." ----
+  #
+  # langchain CLAUDE.md, §Development tools & commands. Any one of the
+  # documented commands satisfies the requirement.
+  - id: langchain-run-unit-tests-before-finish
+    kind: require_command
+    mode: warn
+    when_paths:
+      - "libs/core/langchain_core/**"
+    commands:
+      - "make test"
+      - "uv run pytest"
+      - "uv run --group test pytest"
+    message: "Run the langchain unit tests before finishing (make test or uv run pytest)."

@@ -93,6 +93,35 @@ Keybindings:
 The TUI uses only the same library calls as the non-interactive CLI, so the
 behavior you see on screen is the behavior a `cldc check` in CI would produce.
 
+## End-to-end test against a real repo
+
+The repo ships an opt-in e2e test suite that demonstrates the full
+compile → check → fix flow against a real upstream repo. By default it
+clones [langchain-ai/langchain](https://github.com/langchain-ai/langchain),
+drops a hand-authored `.claude-compiler.yaml` (under
+`tests/e2e/compiler.yaml`) that translates langchain's CLAUDE.md prose
+into enforceable rules, and walks through:
+
+- a **red phase**: edits that should violate specific rules and the
+  decision is `block` with a non-zero exit code,
+- a **green phase**: a complete evidence set that satisfies every rule
+  and the decision is `pass`,
+- a **fix-plan phase**: building a remediation plan from the red report
+  and asserting the steps reference the right rules.
+
+Run it with:
+
+```bash
+make e2e
+# or
+uv run pytest -m e2e -v
+```
+
+The suite is excluded from the default `pytest` run via the `e2e`
+marker, so it never slows down regular CI. It requires `git` on `PATH`
+and network access; both are checked at collection time and produce a
+clean `pytest.skip` if missing.
+
 Exit codes:
 
 - `0`: clean or non-blocking result (decisions `pass` or `warn`)
