@@ -11,15 +11,14 @@ These tests cover the library-vs-CLI logging contract:
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
 from cldc._logging import configure_cli_logging
 from cldc.compiler.policy_compiler import compile_repo_policy
-
 
 PYTHONPATH_ENV = {"PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src")}
 FIXTURE_REPO = Path(__file__).parent / "fixtures" / "repo_a"

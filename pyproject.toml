@@ -73,12 +73,16 @@ filterwarnings = [
 ]
 
 [tool.ruff]
-line-length = 120
+line-length = 140
 target-version = "py311"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+# E501 (line-too-long) is intentionally omitted: argparse help strings,
+# rendered error messages, and test assertions routinely exceed the limit
+# for readability. All other style and correctness rules still apply.
+ignore = ["E501"]
 
 [tool.ruff.format]
 

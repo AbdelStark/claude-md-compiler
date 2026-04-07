@@ -1,11 +1,10 @@
 import json
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 from cldc.runtime.remediation import FIX_PLAN_FORMAT_VERSION, FIX_PLAN_SCHEMA
 from cldc.runtime.report_schema import CHECK_REPORT_FORMAT_VERSION, CHECK_REPORT_SCHEMA
-
 
 PYTHONPATH_ENV = {'PYTHONPATH': str(Path(__file__).resolve().parents[1] / 'src')}
 

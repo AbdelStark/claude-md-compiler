@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from cldc import __version__
 from cldc._logging import configure_cli_logging
@@ -480,10 +480,11 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "fix":
             payload = _load_fix_payload(args)
-            if args.json_output:
-                rendered = json.dumps(payload, indent=2, sort_keys=True)
-            else:
-                rendered = render_fix_plan(payload, format=args.format)
+            rendered = (
+                json.dumps(payload, indent=2, sort_keys=True)
+                if args.json_output
+                else render_fix_plan(payload, format=args.format)
+            )
             _output_text(rendered, args.output_path)
             return 0
         if args.command == "preset":

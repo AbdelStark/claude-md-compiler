@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -14,7 +14,6 @@ from cldc.ingest.source_loader import PRESET_SOURCE_KIND, load_policy_sources
 from cldc.parser.rule_parser import parse_rule_documents
 from cldc.presets import PresetNotFoundError, list_presets, load_preset, preset_path
 from cldc.runtime.evaluator import check_repo_policy
-
 
 PYTHONPATH_ENV = {'PYTHONPATH': str(Path(__file__).resolve().parents[1] / 'src')}
 

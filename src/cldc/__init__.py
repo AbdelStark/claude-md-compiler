@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import tomllib
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-import tomllib
 
 from cldc.errors import (
     CldcError,
@@ -35,7 +35,6 @@ except PackageNotFoundError:
 
 
 __all__ = [
-    "__version__",
     "CldcError",
     "EvidenceError",
     "LockfileError",
@@ -45,4 +44,5 @@ __all__ = [
     "RepoBoundaryError",
     "ReportError",
     "RuleValidationError",
+    "__version__",
 ]

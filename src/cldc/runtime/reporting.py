@@ -7,7 +7,6 @@ from typing import Any
 from cldc.errors import ReportError
 from cldc.runtime.report_schema import CHECK_REPORT_FORMAT_VERSION, CHECK_REPORT_SCHEMA
 
-
 ALLOWED_DECISIONS = {"pass", "warn", "block"}
 
 

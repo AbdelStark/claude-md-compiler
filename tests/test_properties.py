@@ -11,7 +11,8 @@ from typing import Any
 
 import pytest
 import yaml
-from hypothesis import HealthCheck, assume, given, settings, strategies as st
+from hypothesis import HealthCheck, assume, given, settings
+from hypothesis import strategies as st
 
 from cldc.compiler.policy_compiler import compile_repo_policy
 from cldc.ingest.discovery import DiscoveryResult
@@ -25,7 +26,6 @@ from cldc.runtime.evaluator import (
     check_repo_policy,
 )
 from cldc.runtime.events import EMPTY_EXECUTION_INPUTS, load_execution_inputs
-
 
 # Safe path fragment alphabet: only letters, digits, dot, dash, underscore.
 # No glob metacharacters (*, ?, [, ]) so fnmatch literal-matches paths.

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from importlib.metadata import version
 import subprocess
+from importlib.metadata import version
 
 import cldc
 

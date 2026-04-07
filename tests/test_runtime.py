@@ -426,7 +426,7 @@ def test_check_repo_policy_rejects_stale_lockfile(tmp_path):
     )
     os.utime(claude_path, (lockfile_mtime + 5, lockfile_mtime + 5))
 
-    with pytest.raises(ValueError, match='stale|source_digest'):
+    with pytest.raises(ValueError, match=r'stale|source_digest'):
         check_repo_policy(tmp_path, write_paths=['generated/output.json'])
 
 

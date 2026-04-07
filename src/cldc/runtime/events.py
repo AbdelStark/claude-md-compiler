@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from cldc.errors import EvidenceError
-
 
 ALLOWED_EVENT_KINDS = {"read", "write", "command", "claim"}
 
@@ -20,7 +19,7 @@ class ExecutionInputs:
     commands: list[str]
     claims: list[str]
 
-    def merged_with(self, other: "ExecutionInputs") -> "ExecutionInputs":
+    def merged_with(self, other: ExecutionInputs) -> ExecutionInputs:
         return ExecutionInputs(
             read_paths=[*self.read_paths, *other.read_paths],
             write_paths=[*self.write_paths, *other.write_paths],

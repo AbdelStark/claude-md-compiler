@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
 import re
+from dataclasses import asdict, dataclass
+from pathlib import Path, PurePosixPath
 from typing import Any
-
-from pathlib import Path
-from pathlib import PurePosixPath
 
 import yaml
 
