@@ -1,0 +1,37 @@
+# cldc preset: default
+#
+# Baseline guardrails most repos want. Blocks writes to generated output
+# directories and warns when lockfile-generating manifests change without
+# a matching install/sync command. Designed to be extended, not replaced.
+
+rules:
+  - id: preset-default-generated-read-only
+    kind: deny_write
+    mode: block
+    paths:
+      - "generated/**"
+      - "dist/**"
+      - "build/**"
+      - "**/*.generated.*"
+    message: Generated artifacts are managed by the build; edit the source, not the output.
+
+  - id: preset-default-lockfiles-follow-manifests
+    kind: require_command
+    mode: warn
+    when_paths:
+      - "package.json"
+      - "pyproject.toml"
+      - "Cargo.toml"
+      - "go.mod"
+      - "requirements.txt"
+    commands:
+      - "npm install"
+      - "pnpm install"
+      - "yarn install"
+      - "uv sync"
+      - "uv sync --locked"
+      - "pip install -r requirements.txt"
+      - "cargo build"
+      - "cargo update"
+      - "go mod tidy"
+    message: Regenerate the lockfile after editing a dependency manifest.

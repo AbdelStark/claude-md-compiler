@@ -29,6 +29,7 @@ def test_compile_repo_policy_writes_lockfile(tmp_path):
         'claude_md',
         'inline_block',
         'compiler_config',
+        'preset',
         'policy_file',
     ]
     assert [rule['id'] for rule in payload['rules']] == [

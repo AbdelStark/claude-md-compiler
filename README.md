@@ -81,7 +81,8 @@ Sources are discovered from the repo root or any nested path inside the repo. Me
 1. `CLAUDE.md`
 2. inline fenced ```` ```cldc ```` blocks inside `CLAUDE.md`
 3. `.claude-compiler.yaml` or `.claude-compiler.yml`
-4. `policies/*.yml` and `policies/*.yaml`
+4. bundled presets referenced from `.claude-compiler.yaml` via `extends:`
+5. `policies/*.yml` and `policies/*.yaml`
 
 Example:
 
@@ -101,6 +102,9 @@ rules:
 ```yaml
 # .claude-compiler.yaml
 default_mode: warn
+extends:
+  - default        # bundled preset: generated/** is read-only, lockfile-follows-manifest
+  - strict         # bundled preset: tests-follow-source, arch-read, ci-green claim
 rules:
   - id: keep-tests-in-sync
     kind: couple_change
@@ -108,6 +112,35 @@ rules:
     when_paths: ["tests/**"]
     message: Update tests when source changes.
 ```
+
+## Preset Policy Packs
+
+`cldc` ships with opinionated rule packs you can merge into your repo policy via `extends:` in `.claude-compiler.yaml`.
+
+| Preset | What it does |
+| --- | --- |
+| `default` | Blocks writes to `generated/**`, `dist/**`, `build/**`; warns when a dependency manifest changes without a matching `install`/`sync`/`tidy` command. |
+| `strict` | Requires tests to move with source, requires an architecture/RFC read before editing `src/**`, and requires a `ci-green` claim to ship `src/**` changes. |
+| `docs-sync` | Couples public CLI / runtime / API changes with README/docs updates, and couples version bumps with changelog entries. |
+
+Inspect the bundled packs:
+
+```bash
+cldc preset list
+cldc preset show default
+cldc preset show strict --json
+```
+
+Use them by listing one or more names under `extends:`:
+
+```yaml
+# .claude-compiler.yaml
+extends:
+  - default
+  - docs-sync
+```
+
+Preset rules merge alongside your own rules. Duplicate rule IDs fail the compile, so pick unique IDs for your own rules.
 
 ## Rule Model
 

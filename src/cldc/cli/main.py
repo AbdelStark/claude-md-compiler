@@ -7,6 +7,7 @@ import sys
 
 from cldc import __version__
 from cldc.compiler.policy_compiler import compile_repo_policy, doctor_repo_policy
+from cldc.presets import PresetNotFoundError, list_presets, load_preset, preset_path
 from cldc.runtime.evaluator import check_repo_policy
 from cldc.runtime.events import EMPTY_EXECUTION_INPUTS, load_execution_inputs_file, load_execution_inputs_text
 from cldc.runtime.git import collect_git_write_paths
@@ -131,6 +132,38 @@ def build_parser() -> argparse.ArgumentParser:
     _add_report_input_flags(fix_parser)
     _add_json_flag(fix_parser)
     _add_output_flag(fix_parser)
+
+    preset_parser = subparsers.add_parser(
+        "preset",
+        help="List and show bundled policy packs that repos can extend via .claude-compiler.yaml",
+        description=(
+            "Inspect the policy packs bundled with this cldc version. Packs can be referenced "
+            "from `.claude-compiler.yaml` via `extends: [NAME]` to merge their rules into the "
+            "compiled lockfile alongside user-defined rules."
+        ),
+    )
+    preset_subparsers = preset_parser.add_subparsers(dest="preset_command", required=True)
+
+    preset_list_parser = preset_subparsers.add_parser(
+        "list",
+        help="List every bundled preset policy pack",
+        description="List every bundled preset, sorted by name, with its on-disk path.",
+    )
+    _add_json_flag(preset_list_parser)
+    _add_output_flag(preset_list_parser)
+
+    preset_show_parser = preset_subparsers.add_parser(
+        "show",
+        help="Print the YAML contents of one bundled preset",
+        description=(
+            "Print the raw YAML contents of one bundled preset so it can be reviewed, copied, "
+            "or piped into other tools."
+        ),
+    )
+    preset_show_parser.add_argument("name", help="Name of the bundled preset, for example 'default'")
+    _add_json_flag(preset_show_parser)
+    _add_output_flag(preset_show_parser)
+
     return parser
 
 def _output_text(text: str, output_path: str | None = None) -> None:
@@ -308,6 +341,40 @@ def _load_explain_payload(args) -> dict[str, object]:
 
 
 
+def _render_preset_list(json_output: bool) -> str:
+    presets = list_presets()
+    if json_output:
+        payload = {
+            "preset_count": len(presets),
+            "presets": [preset.to_dict() for preset in presets],
+        }
+        return json.dumps(payload, indent=2, sort_keys=True)
+
+    if not presets:
+        return "No presets are bundled with this cldc version."
+    lines = [f"Bundled presets ({len(presets)}):"]
+    for preset in presets:
+        lines.append(f"- {preset.name} ({preset.path})")
+    lines.append("")
+    lines.append("Extend any of these from .claude-compiler.yaml:")
+    lines.append("  extends:")
+    lines.append(f"    - {presets[0].name}")
+    return "\n".join(lines)
+
+
+def _render_preset_show(name: str, json_output: bool) -> str:
+    path = preset_path(name)
+    content = load_preset(name)
+    if json_output:
+        payload = {
+            "name": name,
+            "path": str(path),
+            "content": content,
+        }
+        return json.dumps(payload, indent=2, sort_keys=True)
+    return content.rstrip() + "\n"
+
+
 def _load_fix_payload(args) -> dict[str, object]:
     if getattr(args, 'report_file', None) and getattr(args, 'stdin_report', False):
         raise ValueError("`cldc fix` accepts only one saved report source: choose --report-file or --stdin-report")
@@ -398,6 +465,15 @@ def main(argv: list[str] | None = None) -> int:
                 rendered = render_fix_plan(payload, format=args.format)
             _output_text(rendered, args.output_path)
             return 0
+        if args.command == "preset":
+            if args.preset_command == "list":
+                _output_text(_render_preset_list(args.json_output), args.output_path)
+                return 0
+            if args.preset_command == "show":
+                _output_text(_render_preset_show(args.name, args.json_output), args.output_path)
+                return 0
+            parser.error(f"unknown preset subcommand: {args.preset_command}")
+            return 2
     except Exception as exc:
         if getattr(args, "json_output", False):
             print(

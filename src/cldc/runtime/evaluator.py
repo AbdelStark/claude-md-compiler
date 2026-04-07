@@ -202,8 +202,15 @@ def _validate_lockfile_freshness(repo_root: Path, payload: dict[str, Any]) -> No
     parsed = parse_rule_documents(bundle)
     lockfile = repo_root / LOCKFILE_PATH
 
-    newest_source_mtime = max((repo_root / source.path).stat().st_mtime for source in bundle.sources)
-    if lockfile.stat().st_mtime < newest_source_mtime:
+    repo_local_mtimes: list[float] = []
+    for source in bundle.sources:
+        # Preset sources live inside the installed cldc package, not the
+        # repo — their content is covered by the source_digest check below,
+        # so they are skipped here.
+        if source.path.startswith("preset:"):
+            continue
+        repo_local_mtimes.append((repo_root / source.path).stat().st_mtime)
+    if repo_local_mtimes and lockfile.stat().st_mtime < max(repo_local_mtimes):
         raise ValueError(
             "compiled lockfile appears stale relative to the current policy sources; re-run `cldc compile`"
         )

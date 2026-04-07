@@ -10,8 +10,9 @@ from pathlib import PurePosixPath
 import yaml
 
 from cldc.ingest.discovery import DEFAULT_POLICY_GLOBS, DiscoveryResult, discover_policy_repo
+from cldc.presets import PRESET_SOURCE_KIND, PresetNotFoundError, load_preset, preset_path
 
-SOURCE_PRECEDENCE = ["claude_md", "inline_block", "compiler_config", "policy_file"]
+SOURCE_PRECEDENCE = ["claude_md", "inline_block", "compiler_config", PRESET_SOURCE_KIND, "policy_file"]
 
 
 @dataclass(frozen=True)
@@ -92,6 +93,50 @@ def _load_include_patterns(config_text: str, context: str) -> list[str]:
     return patterns
 
 
+def _load_preset_names(config_text: str, context: str) -> list[str]:
+    config_data = _load_yaml_document(config_text, context)
+    extends = config_data.get("extends")
+    if extends is None:
+        return []
+    if not isinstance(extends, list):
+        raise ValueError("extends must be a list of preset name strings")
+    names: list[str] = []
+    seen: set[str] = set()
+    for index, item in enumerate(extends):
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError(f"extends[{index}] must be a non-empty preset name string")
+        cleaned = item.strip()
+        if cleaned.startswith("preset:"):
+            cleaned = cleaned[len("preset:") :].strip()
+            if not cleaned:
+                raise ValueError(f"extends[{index}] is missing a preset name after 'preset:' prefix")
+        if cleaned in seen:
+            continue
+        seen.add(cleaned)
+        names.append(cleaned)
+    return names
+
+
+def _load_preset_sources(preset_names: list[str]) -> list[PolicySource]:
+    sources: list[PolicySource] = []
+    for name in preset_names:
+        try:
+            content = load_preset(name)
+            resolved_path = preset_path(name)
+        except PresetNotFoundError as exc:
+            raise ValueError(str(exc)) from exc
+        sources.append(
+            PolicySource(
+                kind=PRESET_SOURCE_KIND,
+                path=f"preset:{name}",
+                content=content,
+                block_id=name,
+                line_start=None,
+            )
+        )
+    return sources
+
+
 def load_policy_sources(repo_root: Path | str) -> SourceBundle:
     """Load canonical policy sources for the discovered repository root."""
 
@@ -109,11 +154,15 @@ def load_policy_sources(repo_root: Path | str) -> SourceBundle:
         sources.extend(_extract_inline_blocks(claude_path, claude_text))
 
     include_patterns = list(DEFAULT_POLICY_GLOBS)
+    preset_names: list[str] = []
     if discovery.config_path:
         config_path = root / discovery.config_path
         config_text = config_path.read_text(encoding="utf-8")
         sources.append(PolicySource(kind="compiler_config", path=discovery.config_path, content=config_text))
         include_patterns.extend(_load_include_patterns(config_text, discovery.config_path))
+        preset_names = _load_preset_names(config_text, discovery.config_path)
+
+    sources.extend(_load_preset_sources(preset_names))
 
     seen_policy_paths: set[str] = set()
     for pattern_name in sorted(set(include_patterns)):

@@ -16,10 +16,11 @@
 
 - `src/cldc/cli/main.py`: argparse CLI, command routing, exit codes, JSON/text output.
 - `src/cldc/ingest/discovery.py`: repo-root discovery and source inventory.
-- `src/cldc/ingest/source_loader.py`: source loading, inline `cldc` block extraction, include-pattern validation.
+- `src/cldc/ingest/source_loader.py`: source loading, inline `cldc` block extraction, include-pattern validation, and `extends:` preset resolution.
 - `src/cldc/parser/rule_parser.py`: rule validation and normalized policy model.
 - `src/cldc/compiler/policy_compiler.py`: lockfile generation and `doctor` diagnostics.
-- `src/cldc/runtime/evaluator.py`: policy evaluation against reads, writes, commands, and git-derived write sets.
+- `src/cldc/presets/`: bundled opinionated policy packs (`default`, `strict`, `docs-sync`) and the preset loader API.
+- `src/cldc/runtime/evaluator.py`: policy evaluation against reads, writes, commands, claims, and git-derived write sets.
 - `src/cldc/runtime/events.py`: machine-readable runtime evidence ingestion.
 - `src/cldc/runtime/reporting.py`: saved report validation and rendering.
 - `src/cldc/runtime/remediation.py`: deterministic fix-plan generation and rendering.
@@ -39,6 +40,8 @@ uv run cldc check tests/fixtures/repo_a --write src/main.py --json
 uv run cldc ci tests/fixtures/repo_a --base HEAD --head HEAD --json
 uv run cldc explain tests/fixtures/repo_a --write src/main.py --format markdown
 uv run cldc fix tests/fixtures/repo_a --write src/main.py --json
+uv run cldc preset list
+uv run cldc preset show default
 ```
 
 ## Conventions
@@ -66,7 +69,7 @@ uv run cldc fix tests/fixtures/repo_a --write src/main.py --json
 
 ## Current State
 
-As of April 7, 2026, the shipped CLI surface is `compile`, `doctor`, `check`, `ci`, `explain`, and `fix`.
+As of April 7, 2026, the shipped CLI surface is `compile`, `doctor`, `check`, `ci`, `explain`, `fix`, and `preset`.
 
 Implemented:
 
@@ -74,11 +77,11 @@ Implemented:
 - doctor diagnostics for malformed, stale, and drifted artifacts
 - runtime enforcement for `deny_write`, `require_read`, `require_command`, `couple_change`, and `require_claim`
 - claim ingestion via `--claim`, events file, stdin JSON, and event payloads
+- bundled preset policy packs (`default`, `strict`, `docs-sync`) reachable via `extends:` in `.claude-compiler.yaml` and inspectable with `cldc preset list`/`cldc preset show`
 - saved policy report rendering and deterministic fix-plan generation
 - git-aware CI entrypoints for staged and base/head diffs
 
 Known limitations:
 
-- no preset policy packs
 - no automatic repo mutation or autofix execution
 - no separate lint/type/coverage enforcement in CI yet
