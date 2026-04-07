@@ -9,6 +9,7 @@ build/
 coverage.xml
 htmlcov/
 .ruff_cache/
+.hypothesis/
 .venv/
 .env
 .env.*
