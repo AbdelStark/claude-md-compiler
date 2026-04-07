@@ -245,11 +245,17 @@ class CldcApp(App[None]):
         self.push_screen(PresetModal())
 
     def action_clear_evidence(self) -> None:
+        from textual.css.query import NoMatches
+        from textual.widgets import Input
+
         form = self.query_one(EvidenceForm)
         for input_id in ("#reads-input", "#writes-input", "#commands-input", "#claims-input"):
+            # Inputs are always present under the normal compose flow, but
+            # widgets may be re-mounted mid-frame during tests; treat a
+            # NoMatches as a benign no-op and keep clearing the rest.
             try:
-                form.query_one(input_id).value = ""  # type: ignore[attr-defined]
-            except Exception:
+                form.query_one(input_id, Input).value = ""
+            except NoMatches:
                 continue
         state = self.state
         if state is not None:

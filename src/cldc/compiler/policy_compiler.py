@@ -9,6 +9,7 @@ from typing import Any
 
 from cldc import __version__
 from cldc._logging import get_logger
+from cldc.errors import CldcError
 from cldc.ingest.source_loader import SOURCE_PRECEDENCE, load_policy_sources
 from cldc.parser.rule_parser import parse_rule_documents
 
@@ -139,10 +140,30 @@ def compile_repo_policy(repo_root: Path | str) -> CompiledPolicy:
 
 
 def _safe_resolve(path: Path | str) -> str:
-    try:
-        return str(Path(path).resolve())
-    except FileNotFoundError:
-        return str(Path(path).absolute())
+    # Path.resolve(strict=False) — the default — never raises for missing
+    # paths, so this is just a thin alias kept for readability.
+    return str(Path(path).resolve())
+
+
+def _empty_doctor_report(repo_root: Path | str, errors: list[str]) -> DoctorReport:
+    """Build a DoctorReport that represents a failure before discovery completed."""
+    return DoctorReport(
+        repo_root=_safe_resolve(repo_root),
+        discovered=False,
+        source_count=0,
+        rule_count=0,
+        default_mode=None,
+        source_digest=None,
+        lockfile_path=".claude/policy.lock.json",
+        lockfile_exists=False,
+        lockfile_schema=None,
+        lockfile_format_version=None,
+        lockfile_source_digest=None,
+        warnings=[],
+        errors=errors,
+        next_action=_recommend_next_action(errors, []),
+        discovery={},
+    )
 
 
 def _validate_existing_lockfile(
@@ -208,44 +229,13 @@ def doctor_repo_policy(repo_root: Path | str) -> DoctorReport:
 
     try:
         bundle = load_policy_sources(repo_root)
-    except FileNotFoundError as exc:
-        errors = [str(exc)]
-        return DoctorReport(
-            repo_root=_safe_resolve(repo_root),
-            discovered=False,
-            source_count=0,
-            rule_count=0,
-            default_mode=None,
-            source_digest=None,
-            lockfile_path=".claude/policy.lock.json",
-            lockfile_exists=False,
-            lockfile_schema=None,
-            lockfile_format_version=None,
-            lockfile_source_digest=None,
-            warnings=[],
-            errors=errors,
-            next_action=_recommend_next_action(errors, []),
-            discovery={},
-        )
-    except Exception as exc:
-        errors = [str(exc)]
-        return DoctorReport(
-            repo_root=_safe_resolve(repo_root),
-            discovered=False,
-            source_count=0,
-            rule_count=0,
-            default_mode=None,
-            source_digest=None,
-            lockfile_path=".claude/policy.lock.json",
-            lockfile_exists=False,
-            lockfile_schema=None,
-            lockfile_format_version=None,
-            lockfile_source_digest=None,
-            warnings=[],
-            errors=errors,
-            next_action=_recommend_next_action(errors, []),
-            discovery={},
-        )
+    except (FileNotFoundError, CldcError) as exc:
+        # Discovery, IO, or source-loading failure. Report the raw message
+        # via DoctorReport.errors rather than propagating the exception so
+        # `cldc doctor` stays useful even on a broken repo. Non-cldc and
+        # non-IO exceptions (programming errors) are intentionally left to
+        # propagate so they surface in tests and bug reports.
+        return _empty_doctor_report(repo_root, [str(exc)])
 
     warnings.extend(bundle.discovery.warnings)
     root = Path(bundle.repo_root)
@@ -260,7 +250,10 @@ def doctor_repo_policy(repo_root: Path | str) -> DoctorReport:
         default_mode = parsed.default_mode
         rule_count = len(parsed.rules)
         source_digest = _compute_source_digest(bundle)
-    except Exception as exc:
+    except CldcError as exc:
+        # Typed rule-validation or policy-source errors are expected on a
+        # drifted repo. Programmer errors (e.g. AttributeError) are left to
+        # propagate so the CLI's error handler surfaces a real traceback.
         errors.append(str(exc))
         default_mode = None
         rule_count = 0

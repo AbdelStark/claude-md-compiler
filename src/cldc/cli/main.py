@@ -510,8 +510,11 @@ def main(argv: list[str] | None = None) -> int:
             if args.preset_command == "show":
                 _output_text(_render_preset_show(args.name, args.json_output), args.output_path)
                 return 0
+            # argparse guarantees preset_command is "list" or "show"
+            # because required=True + choices-as-subparsers. This branch is
+            # unreachable via the CLI; keep the explicit error for
+            # programmatic callers that bypass argparse.
             parser.error(f"unknown preset subcommand: {args.preset_command}")
-            return 2
         if args.command == "tui":
             from cldc.tui import run_tui
 
@@ -540,8 +543,11 @@ def main(argv: list[str] | None = None) -> int:
                 traceback.print_exc(file=sys.stderr)
         return 1
 
+    # argparse enforces required=True on the subcommand and every branch
+    # above covers a registered subparser, so this line is unreachable via
+    # the CLI. Kept as a defensive signal for programmatic callers that
+    # bypass argparse and hand-build the namespace.
     parser.error(f"unknown command: {args.command}")
-    return 2
 
 
 if __name__ == "__main__":
