@@ -121,6 +121,10 @@ cldc ci . --base origin/main --head HEAD
 
 # 6. Or explore everything interactively in the terminal
 cldc tui .
+
+# 7. Wire enforcement into git and Claude Code automatically
+cldc hook install git-pre-commit .
+cldc hook generate claude-code > .claude/settings.json
 ```
 
 ## Interactive TUI
@@ -146,6 +150,37 @@ Keybindings:
 
 The TUI uses only the same library calls as the non-interactive CLI, so the
 behavior you see on screen is the behavior a `cldc check` in CI would produce.
+
+## Automatic Enforcement Hooks
+
+`cldc hook` generates and installs hook scripts that run policy
+enforcement at the moments work is finished, so you do not have to
+remember to invoke `cldc check` or `cldc ci` by hand.
+
+```bash
+# Print a portable POSIX git pre-commit script that runs `cldc ci --staged`
+cldc hook generate git-pre-commit
+
+# Install it directly into .git/hooks/pre-commit and mark it executable
+cldc hook install git-pre-commit .
+
+# Refuse to clobber an existing hook unless --force is passed
+cldc hook install git-pre-commit . --force
+
+# Print a .claude/settings.json snippet that wires `cldc check` into the
+# Claude Code agent harness as a PostToolUse hook on Edit|Write|MultiEdit
+cldc hook generate claude-code
+cldc hook generate claude-code --json
+```
+
+The git pre-commit script is self-contained and skips gracefully (with
+a warning) if `cldc` is not on `PATH`, so checking out the hook on a
+machine without `cldc` installed will not break commits. Use
+`git commit --no-verify` to bypass it for a single commit.
+
+The Claude Code snippet is generate-only by design — it is meant to be
+copied or merged into an existing `.claude/settings.json` rather than
+written blindly over a settings file the user may already have customized.
 
 ## End-to-end test against a real repo
 

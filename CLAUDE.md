@@ -25,6 +25,7 @@
 - `src/cldc/runtime/reporting.py`: saved report validation and rendering.
 - `src/cldc/runtime/remediation.py`: deterministic fix-plan generation and rendering.
 - `src/cldc/runtime/git.py`: staged and base/head diff collection.
+- `src/cldc/runtime/hooks.py`: hook artifact generation (git pre-commit, Claude Code settings snippet) and `cldc hook install` writer.
 - `src/cldc/scaffold.py`: `cldc init` scaffolding — writes `.claude-compiler.yaml` (with `extends:` + empty `rules:`) and a stub `CLAUDE.md` for a fresh repo.
 - `src/cldc/tui/`: Textual-based interactive TUI (`cldc tui`). `app.py` hosts `CldcApp`, `state.py` owns the `TuiState` dataclass + loaders, `widgets.py` defines the custom panes, and `styles.tcss` is the dark theme stylesheet.
 - `tests/fixtures/repo_a/`: canonical fixture repo used by compile/runtime/CLI tests.
@@ -46,6 +47,9 @@ uv run cldc fix tests/fixtures/repo_a --write src/main.py --json
 uv run cldc preset list
 uv run cldc preset show default
 uv run cldc tui tests/fixtures/repo_a
+uv run cldc hook generate git-pre-commit
+uv run cldc hook generate claude-code --json
+uv run cldc hook install git-pre-commit /path/to/repo
 ```
 
 ## Conventions
@@ -73,7 +77,7 @@ uv run cldc tui tests/fixtures/repo_a
 
 ## Current State
 
-As of April 7, 2026, the shipped CLI surface is `init`, `compile`, `doctor`, `check`, `ci`, `explain`, `fix`, `preset`, and `tui`.
+As of April 7, 2026, the shipped CLI surface is `init`, `compile`, `doctor`, `check`, `ci`, `explain`, `fix`, `preset`, `tui`, and `hook`.
 
 Implemented:
 
@@ -85,6 +89,7 @@ Implemented:
 - bundled preset policy packs (`default`, `strict`, `docs-sync`) reachable via `extends:` in `.claude-compiler.yaml` and inspectable with `cldc preset list`/`cldc preset show`
 - saved policy report rendering and deterministic fix-plan generation
 - git-aware CI entrypoints for staged and base/head diffs
+- `cldc hook generate {git-pre-commit|claude-code}` and `cldc hook install git-pre-commit` to wire automatic enforcement into git and the Claude Code agent harness
 
 Known limitations:
 
