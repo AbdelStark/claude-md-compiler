@@ -18,6 +18,7 @@ from cldc.compiler.policy_compiler import compile_repo_policy
 from cldc.ingest.discovery import DiscoveryResult
 from cldc.ingest.source_loader import PolicySource, SourceBundle
 from cldc.parser.rule_parser import ParsedPolicy, parse_rule_documents
+from cldc.errors import RepoBoundaryError
 from cldc.runtime.evaluator import (
     _matches_any,
     _matching_claims,
@@ -132,6 +133,48 @@ class TestNormalizePathsProperties:
     def test_escapes_always_raise(self, tmp_path, path):
         with pytest.raises(ValueError, match="outside the discovered repo root"):
             _normalize_paths([path], repo_root=tmp_path)
+
+    # Adversarial path strategy: each segment can be a benign token, an
+    # empty string, dots, parent traversal, leading slash, or arbitrary
+    # whitespace. Joining with "/" produces inputs that exercise the full
+    # surface of `_normalize_paths` -- absolute roots, traversals,
+    # collapsed slashes, and repo-relative paths -- without ever escaping
+    # to control characters that would crash `Path` construction itself.
+    _adversarial_segment = st.one_of(
+        _safe_path_segment,
+        st.sampled_from(["", ".", "..", "...", " ", "  "]),
+    )
+    _adversarial_path = st.one_of(
+        st.lists(_adversarial_segment, min_size=1, max_size=6).map("/".join),
+        st.lists(_adversarial_segment, min_size=1, max_size=6).map(lambda parts: "/" + "/".join(parts)),
+        st.lists(_adversarial_segment, min_size=1, max_size=6).map(lambda parts: "../" + "/".join(parts)),
+    )
+
+    @settings(max_examples=200, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
+    @given(paths=st.lists(_adversarial_path, max_size=8))
+    def test_adversarial_inputs_either_raise_or_stay_inside_repo(self, tmp_path, paths):
+        resolved_root = tmp_path.resolve()
+        try:
+            normalized = _normalize_paths(paths, repo_root=tmp_path)
+        except RepoBoundaryError:
+            return
+
+        for entry in normalized:
+            # Contract: every returned entry is a relative POSIX path that
+            # resolves strictly inside the discovered repo root.
+            assert isinstance(entry, str)
+            assert entry, "normalized entries are non-empty"
+            assert "\\" not in entry, f"POSIX path must not contain backslash: {entry!r}"
+            assert not entry.startswith("/"), f"unexpected absolute path: {entry!r}"
+            assert entry != ".", "current-directory entries should be filtered"
+            assert ".." not in entry.split("/"), f"unexpected traversal segment in {entry!r}"
+
+            joined = (resolved_root / entry).resolve(strict=False)
+            # `relative_to` raises `ValueError` if the resolved path
+            # escapes the repo root, which is exactly what we are
+            # asserting cannot happen here.
+            relative = joined.relative_to(resolved_root)
+            assert relative.as_posix() == entry
 
 
 class TestMatchesAnyProperties:
