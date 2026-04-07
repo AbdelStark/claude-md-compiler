@@ -421,10 +421,16 @@ def test_check_repo_policy_rejects_stale_lockfile(tmp_path):
 def _init_git_repo(repo: Path) -> None:
     import subprocess
 
+    # Local `commit.gpgsign=false` isolates the test repo from any
+    # signing hooks configured in the developer or CI environment. Tests
+    # must not depend on a signing key being present; otherwise the suite
+    # cannot run in sandboxed or unattended environments.
     commands = [
         ["git", "init"],
         ["git", "config", "user.email", "cldc-tests@example.com"],
         ["git", "config", "user.name", "CLDC Tests"],
+        ["git", "config", "commit.gpgsign", "false"],
+        ["git", "config", "tag.gpgsign", "false"],
         ["git", "add", "."],
         ["git", "commit", "-m", "baseline"],
     ]
