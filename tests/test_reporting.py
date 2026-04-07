@@ -171,11 +171,11 @@ class TestNormalizeGit:
         assert "head" not in result
 
     def test_rejects_bad_git_command_entries(self):
-        with pytest.raises(ReportError, match="git.git_command"):
+        with pytest.raises(ReportError, match=r"git\.git_command"):
             _normalize_git({"mode": "staged", "write_path_count": 0, "git_command": [""]})
 
     def test_rejects_missing_mode(self):
-        with pytest.raises(ReportError, match="git.mode"):
+        with pytest.raises(ReportError, match=r"git\.mode"):
             _normalize_git({"write_path_count": 0})
 
     def test_rejects_non_int_write_path_count(self):

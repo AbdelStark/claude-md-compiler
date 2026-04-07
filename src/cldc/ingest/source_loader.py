@@ -1,3 +1,14 @@
+"""Canonical policy source loading for cldc.
+
+`load_policy_sources` is the second stage of the ingest pipeline. Given a
+discovered repo, it reads `CLAUDE.md`, extracts inline ` ```cldc ``` ` fenced
+blocks, parses `.claude-compiler.yaml` (resolving `extends:` against bundled
+preset packs), and walks `policies/*.yml`/`policies/*.yaml` plus any safe
+include patterns from the compiler config. Sources are returned in a
+deterministic order so the SHA-256 source digest computed by the compiler is
+byte-stable for the same inputs.
+"""
+
 from __future__ import annotations
 
 import re

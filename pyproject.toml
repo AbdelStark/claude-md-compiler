@@ -6,26 +6,60 @@ build-backend = "uv_build"
 [project]
 name = "claude-md-compiler"
 version = "0.1.1"
-description = "Compile CLAUDE.md into enforceable repo policy for Claude Code"
+description = "Compile CLAUDE.md into a versioned policy lockfile and enforce it against file edits, commands, and git diffs."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [
-  { name = "Hermes Agent" },
+  { name = "AbdelStark", email = "noreply@github.com" },
 ]
-keywords = ["claude", "policy", "cli", "compiler", "ci", "automation"]
+maintainers = [
+  { name = "AbdelStark", email = "noreply@github.com" },
+]
+keywords = [
+  "claude",
+  "claude-code",
+  "agent",
+  "agentic",
+  "policy",
+  "policy-as-code",
+  "guardrails",
+  "lockfile",
+  "compiler",
+  "linter",
+  "cli",
+  "ci",
+  "pre-commit",
+  "automation",
+  "developer-tools",
+]
 classifiers = [
   "Development Status :: 3 - Alpha",
+  "Environment :: Console",
   "Intended Audience :: Developers",
+  "Intended Audience :: System Administrators",
   "License :: OSI Approved :: MIT License",
+  "Natural Language :: English",
   "Operating System :: OS Independent",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS :: MacOS X",
+  "Operating System :: Microsoft :: Windows",
+  "Programming Language :: Python",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Topic :: Software Development",
   "Topic :: Software Development :: Build Tools",
+  "Topic :: Software Development :: Code Generators",
   "Topic :: Software Development :: Quality Assurance",
+  "Topic :: Software Development :: Testing",
+  "Topic :: System :: Systems Administration",
+  "Topic :: Utilities",
+  "Typing :: Typed",
 ]
 requires-python = ">=3.11"
 dependencies = [
@@ -35,8 +69,11 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/AbdelStark/claude-md-compiler"
+Documentation = "https://github.com/AbdelStark/claude-md-compiler#readme"
 Repository = "https://github.com/AbdelStark/claude-md-compiler"
 Issues = "https://github.com/AbdelStark/claude-md-compiler/issues"
+Changelog = "https://github.com/AbdelStark/claude-md-compiler/blob/main/CHANGELOG.md"
+"Source Code" = "https://github.com/AbdelStark/claude-md-compiler"
 
 [dependency-groups]
 dev = [

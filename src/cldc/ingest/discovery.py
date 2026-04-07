@@ -1,3 +1,13 @@
+"""Repository discovery for cldc.
+
+`discover_policy_repo` walks up from any path inside a repo until it finds a
+"policy marker" — `CLAUDE.md`, `.claude-compiler.yaml`/`.yml`, or
+`policies/*.yml` — and returns a `DiscoveryResult` describing what was
+found and what is missing. Discovery is the first step of every CLI command;
+keeping it pure and side-effect-free lets `doctor`, `compile`, `check`, `ci`,
+`explain`, `fix`, and `tui` all rely on the same predicate.
+"""
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass

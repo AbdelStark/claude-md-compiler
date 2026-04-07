@@ -1,3 +1,13 @@
+"""Rule validation and normalization for cldc.
+
+`parse_rule_documents` walks a `SourceBundle` from the ingest layer, validates
+each YAML rule document against the canonical schema (`ALLOWED_RULE_KINDS`,
+`REQUIRED_FIELDS_BY_KIND`), de-duplicates rule ids across sources, and
+returns a `ParsedPolicy` ready for the compiler to serialize. Validation is
+strict by design: any unknown rule kind, missing required field, or duplicate
+id raises `RuleValidationError` instead of being silently dropped.
+"""
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass

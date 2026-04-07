@@ -14,6 +14,9 @@
 
 ## Repository Map
 
+- `src/cldc/__init__.py`: typed exception re-exports, `__version__` resolver.
+- `src/cldc/_logging.py`: library logging setup (`NullHandler` by default, CLI stderr handler on demand).
+- `src/cldc/errors.py`: typed exception hierarchy rooted at `CldcError(ValueError)`.
 - `src/cldc/cli/main.py`: argparse CLI, command routing, exit codes, JSON/text output.
 - `src/cldc/ingest/discovery.py`: repo-root discovery and source inventory.
 - `src/cldc/ingest/source_loader.py`: source loading, inline `cldc` block extraction, include-pattern validation, and `extends:` preset resolution.
@@ -21,15 +24,18 @@
 - `src/cldc/compiler/policy_compiler.py`: lockfile generation and `doctor` diagnostics.
 - `src/cldc/presets/`: bundled opinionated policy packs (`default`, `strict`, `docs-sync`) and the preset loader API.
 - `src/cldc/runtime/evaluator.py`: policy evaluation against reads, writes, commands, claims, and git-derived write sets.
-- `src/cldc/runtime/events.py`: machine-readable runtime evidence ingestion.
-- `src/cldc/runtime/reporting.py`: saved report validation and rendering.
+- `src/cldc/runtime/events.py`: machine-readable runtime evidence ingestion (file, text, in-memory).
+- `src/cldc/runtime/reporting.py`: saved report validation and text/markdown rendering.
 - `src/cldc/runtime/remediation.py`: deterministic fix-plan generation and rendering.
-- `src/cldc/runtime/git.py`: staged and base/head diff collection.
+- `src/cldc/runtime/git.py`: staged and base/head diff collection with typed `GitError` failures.
 - `src/cldc/runtime/hooks.py`: hook artifact generation (git pre-commit, Claude Code settings snippet) and `cldc hook install` writer.
+- `src/cldc/runtime/report_schema.py`: versioned `policy-report/v1` constants (kept separate to avoid circular imports).
 - `src/cldc/scaffold.py`: `cldc init` scaffolding — writes `.claude-compiler.yaml` (with `extends:` + empty `rules:`) and a stub `CLAUDE.md` for a fresh repo.
 - `src/cldc/tui/`: Textual-based interactive TUI (`cldc tui`). `app.py` hosts `CldcApp`, `state.py` owns the `TuiState` dataclass + loaders, `widgets.py` defines the custom panes, and `styles.tcss` is the dark theme stylesheet.
 - `tests/fixtures/repo_a/`: canonical fixture repo used by compile/runtime/CLI tests.
+- `tests/e2e/`: opt-in end-to-end suite (`@pytest.mark.e2e`) that clones `langchain-ai/langchain` and runs the full red/green/fix flow.
 - `docs/rfcs/`: frozen implementation contracts.
+- `docs/library-usage.md`: full library reference for embedders.
 
 ## Build, Test, and Run
 

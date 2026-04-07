@@ -1,3 +1,19 @@
+"""Argparse-based command-line entry point for `cldc`.
+
+`main(argv)` is the single function the `cldc` console script invokes. It
+builds the parser, dispatches to the appropriate library call in
+`cldc.compiler`, `cldc.runtime`, `cldc.presets`, `cldc.scaffold`, or
+`cldc.tui`, and translates the result into a shell-friendly exit code:
+
+* `0` — clean run, or a non-blocking decision (`pass`/`warn`).
+* `1` — runtime or input error (`--json` payload includes `error_type`).
+* `2` — at least one blocking policy violation (`block`).
+
+This module is intentionally a thin shell. All policy-relevant behavior lives
+in the library layers; this file translates argparse namespaces into library
+calls and library results into stdout/stderr text or JSON.
+"""
+
 from __future__ import annotations
 
 import argparse

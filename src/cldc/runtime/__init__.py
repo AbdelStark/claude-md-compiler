@@ -1,3 +1,11 @@
+"""Runtime layer for cldc.
+
+Re-exports the small set of public symbols that downstream embedders need to
+evaluate policy, build remediation plans, and integrate with git. Importing
+from `cldc.runtime` gives a stable surface even if internal modules are
+restructured later.
+"""
+
 from cldc.runtime.evaluator import CheckReport, Violation, check_repo_policy
 from cldc.runtime.events import (
     ExecutionInputs,

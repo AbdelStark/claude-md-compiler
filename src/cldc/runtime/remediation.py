@@ -1,3 +1,15 @@
+"""Deterministic remediation plan generation for cldc.
+
+`build_fix_plan` turns a saved policy report (or a freshly produced check
+report payload) into a structured remediation plan: per-violation steps,
+files to inspect, suggested or forbidden commands, and required claims. The
+plan is purely advisory — `cldc` never executes remediations on its own.
+
+`render_fix_plan` renders a normalized plan as text or Markdown for human
+review. The plan carries its own `$schema` (`policy-fix-plan/v1`) so
+downstream tools can refuse mismatched versions instead of guessing.
+"""
+
 from __future__ import annotations
 
 from typing import Any
