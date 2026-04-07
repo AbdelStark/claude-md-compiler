@@ -12,6 +12,7 @@ ALLOWED_RULE_KINDS = {
     "require_read",
     "deny_write",
     "require_command",
+    "forbid_command",
     "couple_change",
     "require_claim",
 }
@@ -20,6 +21,7 @@ REQUIRED_FIELDS_BY_KIND = {
     "deny_write": ("paths",),
     "require_read": ("paths", "before_paths"),
     "require_command": ("commands", "when_paths"),
+    "forbid_command": ("commands",),
     "couple_change": ("paths", "when_paths"),
     "require_claim": ("claims", "when_paths"),
 }

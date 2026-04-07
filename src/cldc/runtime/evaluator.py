@@ -25,6 +25,7 @@ ALLOWED_RULE_KINDS = {
     "deny_write",
     "require_read",
     "require_command",
+    "forbid_command",
     "couple_change",
     "require_claim",
 }
@@ -271,6 +272,18 @@ def _explain_violation(
             f"Write activity {path_list} triggered require_command rule '{rule_id}', but no required command matched {required_command_list}.",
             f"Run one of the required commands before finishing: {required_command_list}.",
         )
+    if kind == "forbid_command":
+        forbidden_list = _join_for_humans(list(rule.get("commands") or []))
+        if matched_paths:
+            return (
+                f"Forbidden command(s) {command_list} ran while writing {path_list}, matching forbid_command rule '{rule_id}'.",
+                f"Do not run {forbidden_list} when touching paths matching {_join_for_humans(list(rule.get('when_paths') or []))}; "
+                "revert or replace the invocation with an allowed alternative.",
+            )
+        return (
+            f"Forbidden command(s) {command_list} ran, matching forbid_command rule '{rule_id}'.",
+            f"Do not run {forbidden_list} in this repository; revert or replace the invocation with an allowed alternative.",
+        )
     if kind == "couple_change":
         return (
             f"Write activity {path_list} triggered couple_change rule '{rule_id}', but no coupled change matched {required_path_list}.",
@@ -412,6 +425,24 @@ def _evaluate_rule(
             default_mode=default_mode,
             matched_paths=triggered_paths,
             required_claims=list(rule.get("claims") or []),
+        )
+
+    if kind == "forbid_command":
+        forbidden_commands = _matching_commands(commands, rule.get("commands"))
+        if not forbidden_commands:
+            return None
+        when_paths = rule.get("when_paths")
+        if when_paths:
+            triggered_paths = _matching_paths(write_paths, when_paths)
+            if not triggered_paths:
+                return None
+        else:
+            triggered_paths = []
+        return _build_violation(
+            rule,
+            default_mode=default_mode,
+            matched_paths=triggered_paths,
+            matched_commands=forbidden_commands,
         )
 
     triggered_paths = _matching_paths(write_paths, rule.get("when_paths"))

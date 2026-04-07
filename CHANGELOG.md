@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- New `cldc init` command — scaffolds a repo's `.claude-compiler.yaml`
+  from one or more bundled presets (`--preset default --preset strict`,
+  repeatable) and writes a stub `CLAUDE.md` if none exists. Never
+  overwrites an existing `CLAUDE.md`; refuses to clobber an existing
+  `.claude-compiler.yaml` unless `--force` is passed. `--json` emits a
+  machine-readable init report with `created`/`updated`/`skipped`
+  lists and a `next_action` hint pointing at `cldc compile`. Backed by
+  a new `cldc.scaffold` module with `initialize_repo_policy` and
+  `InitReport`.
+- New `forbid_command` rule kind — the inverse of `require_command`.
+  Fires when any of the listed `commands` is observed in the runtime
+  evidence and, if `when_paths` is specified, any write path matches
+  one of those patterns. Wired through parser, lockfile compiler,
+  evaluator, explain, fix plan, and CLI renders. The bundled `strict`
+  preset now ships a `preset-strict-forbid-raw-pip-install` rule that
+  blocks `pip install` against `pyproject.toml` edits so teams on
+  `uv`/`poetry`/`pip-tools` stay on their canonical installer.
+- Fix-plan remediations gained a `forbidden_commands` field carrying
+  the observed-and-forbidden command list so text/markdown renders can
+  call them out explicitly. Additive only — existing consumers that do
+  not inspect the new field continue to parse correctly.
+- `cldc check` text output now prints `matched commands` per violation
+  so forbid_command firings are self-explanatory without needing
+  `cldc explain`.
 - End-to-end test suite under `tests/e2e/` that clones
   `langchain-ai/langchain`, drops a hand-authored `.claude-compiler.yaml`
   (`tests/e2e/compiler.yaml`) translating langchain's CLAUDE.md prose

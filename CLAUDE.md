@@ -25,6 +25,7 @@
 - `src/cldc/runtime/reporting.py`: saved report validation and rendering.
 - `src/cldc/runtime/remediation.py`: deterministic fix-plan generation and rendering.
 - `src/cldc/runtime/git.py`: staged and base/head diff collection.
+- `src/cldc/scaffold.py`: `cldc init` scaffolding — writes `.claude-compiler.yaml` (with `extends:` + empty `rules:`) and a stub `CLAUDE.md` for a fresh repo.
 - `src/cldc/tui/`: Textual-based interactive TUI (`cldc tui`). `app.py` hosts `CldcApp`, `state.py` owns the `TuiState` dataclass + loaders, `widgets.py` defines the custom panes, and `styles.tcss` is the dark theme stylesheet.
 - `tests/fixtures/repo_a/`: canonical fixture repo used by compile/runtime/CLI tests.
 - `docs/rfcs/`: frozen implementation contracts.
@@ -36,6 +37,7 @@ uv sync --locked
 uv run pytest -q
 uv build
 uv run cldc --help
+uv run cldc init /path/to/new/repo --preset default
 uv run cldc compile tests/fixtures/repo_a
 uv run cldc check tests/fixtures/repo_a --write src/main.py --json
 uv run cldc ci tests/fixtures/repo_a --base HEAD --head HEAD --json
@@ -71,13 +73,14 @@ uv run cldc tui tests/fixtures/repo_a
 
 ## Current State
 
-As of April 7, 2026, the shipped CLI surface is `compile`, `doctor`, `check`, `ci`, `explain`, `fix`, and `preset`.
+As of April 7, 2026, the shipped CLI surface is `init`, `compile`, `doctor`, `check`, `ci`, `explain`, `fix`, `preset`, and `tui`.
 
 Implemented:
 
 - deterministic source discovery and lockfile generation
+- `cldc init` onboarding scaffolder (`.claude-compiler.yaml` + stub `CLAUDE.md`, one or more presets via `--preset`, safe by default, `--force` to overwrite the config)
 - doctor diagnostics for malformed, stale, and drifted artifacts
-- runtime enforcement for `deny_write`, `require_read`, `require_command`, `couple_change`, and `require_claim`
+- runtime enforcement for `deny_write`, `require_read`, `require_command`, `forbid_command`, `couple_change`, and `require_claim`
 - claim ingestion via `--claim`, events file, stdin JSON, and event payloads
 - bundled preset policy packs (`default`, `strict`, `docs-sync`) reachable via `extends:` in `.claude-compiler.yaml` and inspectable with `cldc preset list`/`cldc preset show`
 - saved policy report rendering and deterministic fix-plan generation

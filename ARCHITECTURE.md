@@ -121,6 +121,7 @@ and are added incrementally as the contract surface stabilizes.
 | `deny_write` | `paths` | Paths matching `paths` must not be written. |
 | `require_read` | `paths`, `before_paths` | Writing `paths` requires a prior read matching `before_paths`. |
 | `require_command` | `commands`, `when_paths` | Writing `when_paths` requires at least one listed command to run. |
+| `forbid_command` | `commands` (optional `when_paths`) | The listed commands must not run; scoped to `when_paths` when provided, otherwise global to the repo. |
 | `couple_change` | `paths`, `when_paths` | Writing `paths` requires a companion write matching `when_paths`. |
 | `require_claim` | `claims`, `when_paths` | Writing `when_paths` requires at least one listed claim to be asserted. |
 

@@ -96,3 +96,58 @@ def test_parse_rule_documents_rejects_require_claim_without_when_paths(tmp_path)
 
     with pytest.raises(ValueError, match="requires field 'when_paths'"):
         parse_rule_documents(bundle)
+
+
+def test_parse_rule_documents_accepts_forbid_command_rule(tmp_path):
+    (tmp_path / "CLAUDE.md").write_text(
+        "```cldc\n"
+        "rules:\n"
+        "  - id: no-raw-pip\n"
+        "    kind: forbid_command\n"
+        "    mode: block\n"
+        "    when_paths: ['pyproject.toml']\n"
+        "    commands: ['pip install']\n"
+        "    message: Use uv sync instead of pip install.\n"
+        "```\n"
+    )
+
+    bundle = load_policy_sources(tmp_path)
+    parsed = parse_rule_documents(bundle)
+
+    assert len(parsed.rules) == 1
+    rule = parsed.rules[0]
+    assert rule.rule_id == "no-raw-pip"
+    assert rule.kind == "forbid_command"
+    assert rule.mode == "block"
+    assert rule.when_paths == ["pyproject.toml"]
+    assert rule.commands == ["pip install"]
+
+
+def test_parse_rule_documents_accepts_forbid_command_without_when_paths(tmp_path):
+    (tmp_path / "CLAUDE.md").write_text(
+        "```cldc\n"
+        "rules:\n"
+        "  - id: no-curl-sudo\n"
+        "    kind: forbid_command\n"
+        "    commands: ['curl | sudo bash']\n"
+        "    message: No curl-pipe-to-sudo in this repo.\n"
+        "```\n"
+    )
+
+    bundle = load_policy_sources(tmp_path)
+    parsed = parse_rule_documents(bundle)
+
+    assert len(parsed.rules) == 1
+    assert parsed.rules[0].kind == "forbid_command"
+    assert parsed.rules[0].when_paths is None
+
+
+def test_parse_rule_documents_rejects_forbid_command_without_commands(tmp_path):
+    (tmp_path / "CLAUDE.md").write_text(
+        "```cldc\nrules:\n  - id: no-bad\n    kind: forbid_command\n    when_paths: ['src/**']\n    message: missing commands\n```\n"
+    )
+
+    bundle = load_policy_sources(tmp_path)
+
+    with pytest.raises(ValueError, match="requires field 'commands'"):
+        parse_rule_documents(bundle)

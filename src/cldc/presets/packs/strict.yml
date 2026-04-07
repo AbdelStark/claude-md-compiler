@@ -34,3 +34,16 @@ rules:
     claims:
       - "ci-green"
     message: Require a `ci-green` claim to ship source changes under src/**.
+
+  - id: preset-strict-forbid-raw-pip-install
+    kind: forbid_command
+    mode: block
+    when_paths:
+      - "pyproject.toml"
+      - "**/pyproject.toml"
+      - "requirements.txt"
+      - "**/requirements.txt"
+    commands:
+      - "pip install"
+      - "pip install -r requirements.txt"
+    message: Do not run `pip install` against manifest edits; use the repo's canonical installer (uv sync, poetry install, pip-sync).

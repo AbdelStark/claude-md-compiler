@@ -418,6 +418,121 @@ def test_check_repo_policy_rejects_stale_lockfile(tmp_path):
         check_repo_policy(tmp_path, write_paths=["generated/output.json"])
 
 
+def _write_forbid_command_repo(tmp_path, *, scoped: bool = True):
+    when_paths_line = "    when_paths: ['pyproject.toml']\n" if scoped else ""
+    (tmp_path / "CLAUDE.md").write_text(
+        "```cldc\n"
+        "rules:\n"
+        "  - id: no-raw-pip\n"
+        "    kind: forbid_command\n"
+        "    mode: block\n"
+        f"{when_paths_line}"
+        "    commands: ['pip install', 'pip install -r requirements.txt']\n"
+        "    message: Use uv sync instead of pip install.\n"
+        "```\n"
+    )
+    compile_repo_policy(tmp_path)
+
+
+def test_check_repo_policy_blocks_forbid_command_when_scope_and_command_match(tmp_path):
+    _write_forbid_command_repo(tmp_path)
+
+    report = check_repo_policy(
+        tmp_path,
+        write_paths=["pyproject.toml"],
+        commands=["pip install"],
+    )
+
+    assert report.decision == "block"
+    assert report.ok is False
+    assert report.blocking_violation_count == 1
+    violation = report.violations[0]
+    assert violation.rule_id == "no-raw-pip"
+    assert violation.kind == "forbid_command"
+    assert violation.mode == "block"
+    assert violation.matched_commands == ["pip install"]
+    assert violation.matched_paths == ["pyproject.toml"]
+    assert "forbid_command rule 'no-raw-pip'" in violation.explanation
+    assert "Do not run" in violation.recommended_action
+
+
+def test_check_repo_policy_passes_forbid_command_when_command_not_run(tmp_path):
+    _write_forbid_command_repo(tmp_path)
+
+    report = check_repo_policy(
+        tmp_path,
+        write_paths=["pyproject.toml"],
+        commands=["uv sync --locked"],
+    )
+
+    assert report.decision == "pass"
+    assert report.violations == []
+
+
+def test_check_repo_policy_passes_forbid_command_when_scope_not_touched(tmp_path):
+    _write_forbid_command_repo(tmp_path)
+
+    report = check_repo_policy(
+        tmp_path,
+        write_paths=["README.md"],
+        commands=["pip install"],
+    )
+
+    assert report.decision == "pass"
+    assert report.violations == []
+
+
+def test_check_repo_policy_forbid_command_without_when_paths_is_repo_global(tmp_path):
+    _write_forbid_command_repo(tmp_path, scoped=False)
+
+    report = check_repo_policy(
+        tmp_path,
+        write_paths=["README.md"],
+        commands=["pip install -r requirements.txt"],
+    )
+
+    assert report.decision == "block"
+    assert len(report.violations) == 1
+    assert report.violations[0].matched_commands == ["pip install -r requirements.txt"]
+    # With no when_paths the rule does not need matched paths to fire.
+    assert report.violations[0].matched_paths == []
+
+
+def test_forbid_command_remediation_plan_includes_forbidden_commands(tmp_path):
+    _write_forbid_command_repo(tmp_path)
+    report = check_repo_policy(
+        tmp_path,
+        write_paths=["pyproject.toml"],
+        commands=["pip install"],
+    )
+
+    plan = build_fix_plan(report.to_dict())
+
+    assert plan["remediation_count"] == 1
+    remediation = plan["remediations"][0]
+    assert remediation["kind"] == "forbid_command"
+    assert remediation["priority"] == "blocking"
+    assert remediation["forbidden_commands"] == ["pip install"]
+    assert remediation["suggested_commands"] == []
+    assert any("pip install" in step for step in remediation["steps"])
+
+
+def test_render_fix_plan_for_forbid_command_includes_forbidden_commands_line(tmp_path):
+    _write_forbid_command_repo(tmp_path)
+    report = check_repo_policy(
+        tmp_path,
+        write_paths=["pyproject.toml"],
+        commands=["pip install"],
+    )
+    plan = build_fix_plan(report.to_dict())
+
+    text = render_fix_plan(plan, format="text")
+    md = render_fix_plan(plan, format="markdown")
+
+    assert "Forbidden commands: pip install" in text
+    assert "**Forbidden commands:** `pip install`" in md
+
+
 def _init_git_repo(repo: Path) -> None:
     import subprocess
 
