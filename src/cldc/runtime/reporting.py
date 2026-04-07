@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from cldc.errors import ReportError
 from cldc.runtime.report_schema import CHECK_REPORT_FORMAT_VERSION, CHECK_REPORT_SCHEMA
 
 
@@ -12,7 +13,7 @@ ALLOWED_DECISIONS = {"pass", "warn", "block"}
 
 def _require_string(value: Any, *, field: str) -> str:
     if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"report field '{field}' must be a non-empty string")
+        raise ReportError(f"report field '{field}' must be a non-empty string")
     return value.strip()
 
 
@@ -26,25 +27,25 @@ def _optional_string(value: Any, *, field: str) -> str | None:
 
 def _require_bool(value: Any, *, field: str) -> bool:
     if not isinstance(value, bool):
-        raise ValueError(f"report field '{field}' must be a boolean")
+        raise ReportError(f"report field '{field}' must be a boolean")
     return value
 
 
 
 def _require_int(value: Any, *, field: str) -> int:
     if not isinstance(value, int):
-        raise ValueError(f"report field '{field}' must be an integer")
+        raise ReportError(f"report field '{field}' must be an integer")
     return value
 
 
 
 def _require_string_list(value: Any, *, field: str) -> list[str]:
     if not isinstance(value, list):
-        raise ValueError(f"report field '{field}' must be a list of strings")
+        raise ReportError(f"report field '{field}' must be a list of strings")
     result: list[str] = []
     for index, item in enumerate(value):
         if not isinstance(item, str) or not item.strip():
-            raise ValueError(f"report field '{field}[{index}]' must be a non-empty string")
+            raise ReportError(f"report field '{field}[{index}]' must be a non-empty string")
         result.append(item.strip())
     return result
 
@@ -52,7 +53,7 @@ def _require_string_list(value: Any, *, field: str) -> list[str]:
 
 def _normalize_inputs(value: Any) -> dict[str, list[str]]:
     if not isinstance(value, dict):
-        raise ValueError("report field 'inputs' must be a JSON object")
+        raise ReportError("report field 'inputs' must be a JSON object")
     return {
         'read_paths': _require_string_list(value.get('read_paths', []), field='inputs.read_paths'),
         'write_paths': _require_string_list(value.get('write_paths', []), field='inputs.write_paths'),
@@ -66,7 +67,7 @@ def _normalize_git(value: Any) -> dict[str, Any] | None:
     if value is None:
         return None
     if not isinstance(value, dict):
-        raise ValueError("report field 'git' must be a JSON object when present")
+        raise ReportError("report field 'git' must be a JSON object when present")
 
     normalized: dict[str, Any] = {
         'mode': _require_string(value.get('mode'), field='git.mode'),
@@ -83,7 +84,7 @@ def _normalize_git(value: Any) -> dict[str, Any] | None:
 
 def _normalize_violation(value: Any, *, index: int) -> dict[str, Any]:
     if not isinstance(value, dict):
-        raise ValueError(f"report field 'violations[{index}]' must be a JSON object")
+        raise ReportError(f"report field 'violations[{index}]' must be a JSON object")
     return {
         'rule_id': _require_string(value.get('rule_id'), field=f'violations[{index}].rule_id'),
         'kind': _require_string(value.get('kind'), field=f'violations[{index}].kind'),
@@ -121,27 +122,27 @@ def load_check_report(payload: Any) -> dict[str, Any]:
     """Validate a saved policy report artifact and normalize its shape."""
 
     if not isinstance(payload, dict):
-        raise ValueError('policy report payload must be a JSON object')
+        raise ReportError('policy report payload must be a JSON object')
 
     schema = payload.get('$schema')
     if schema is not None and schema != CHECK_REPORT_SCHEMA:
-        raise ValueError(
+        raise ReportError(
             "report field '$schema' does not match this explainer; regenerate the report with the current `cldc` version"
         )
 
     format_version = payload.get('format_version')
     if format_version is not None and format_version != CHECK_REPORT_FORMAT_VERSION:
-        raise ValueError(
+        raise ReportError(
             "report field 'format_version' does not match this explainer; regenerate the report with the current `cldc` version"
         )
 
     decision = _require_string(payload.get('decision'), field='decision')
     if decision not in ALLOWED_DECISIONS:
-        raise ValueError(f"report field 'decision' must be one of: {', '.join(sorted(ALLOWED_DECISIONS))}")
+        raise ReportError(f"report field 'decision' must be one of: {', '.join(sorted(ALLOWED_DECISIONS))}")
 
     violations = payload.get('violations')
     if not isinstance(violations, list):
-        raise ValueError("report field 'violations' must be a list")
+        raise ReportError("report field 'violations' must be a list")
 
     normalized = {
         '$schema': CHECK_REPORT_SCHEMA,
@@ -174,7 +175,7 @@ def load_check_report_file(path: Path | str) -> dict[str, Any]:
     except FileNotFoundError as exc:
         raise FileNotFoundError(f"policy report file not found: {file_path}") from exc
     except json.JSONDecodeError as exc:
-        raise ValueError(f"policy report file is not valid JSON: {exc}") from exc
+        raise ReportError(f"policy report file is not valid JSON: {exc}") from exc
     return load_check_report(payload)
 
 
@@ -183,7 +184,7 @@ def load_check_report_text(text: str, *, source: str = 'stdin') -> dict[str, Any
     try:
         payload = json.loads(text)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"policy report from {source} is not valid JSON: {exc}") from exc
+        raise ReportError(f"policy report from {source} is not valid JSON: {exc}") from exc
     return load_check_report(payload)
 
 
@@ -213,7 +214,7 @@ def render_check_report(payload: dict[str, Any], *, format: str = 'text') -> str
     if format == 'markdown':
         return _render_markdown(report)
     if format != 'text':
-        raise ValueError("report format must be 'text' or 'markdown'")
+        raise ReportError("report format must be 'text' or 'markdown'")
     return _render_text(report)
 
 

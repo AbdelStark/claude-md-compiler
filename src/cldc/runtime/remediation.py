@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from cldc.errors import ReportError
 from cldc.runtime.reporting import load_check_report
 
 FIX_PLAN_SCHEMA = "https://cldc.dev/schemas/policy-fix-plan/v1"
@@ -10,7 +11,7 @@ FIX_PLAN_FORMAT_VERSION = "1"
 
 def _require_string(value: Any, *, field: str) -> str:
     if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"fix plan field '{field}' must be a non-empty string")
+        raise ReportError(f"fix plan field '{field}' must be a non-empty string")
     return value.strip()
 
 
@@ -22,19 +23,19 @@ def _optional_string(value: Any, *, field: str) -> str | None:
 
 def _require_bool(value: Any, *, field: str) -> bool:
     if not isinstance(value, bool):
-        raise ValueError(f"fix plan field '{field}' must be a boolean")
+        raise ReportError(f"fix plan field '{field}' must be a boolean")
     return value
 
 
 def _require_int(value: Any, *, field: str) -> int:
     if not isinstance(value, int):
-        raise ValueError(f"fix plan field '{field}' must be an integer")
+        raise ReportError(f"fix plan field '{field}' must be an integer")
     return value
 
 
 def _require_string_list(value: Any, *, field: str) -> list[str]:
     if not isinstance(value, list):
-        raise ValueError(f"fix plan field '{field}' must be a list of strings")
+        raise ReportError(f"fix plan field '{field}' must be a list of strings")
     result: list[str] = []
     for index, item in enumerate(value):
         result.append(_require_string(item, field=f"{field}[{index}]"))
@@ -43,7 +44,7 @@ def _require_string_list(value: Any, *, field: str) -> list[str]:
 
 def _normalize_inputs(value: Any) -> dict[str, list[str]]:
     if not isinstance(value, dict):
-        raise ValueError("fix plan field 'inputs' must be a JSON object")
+        raise ReportError("fix plan field 'inputs' must be a JSON object")
     return {
         'read_paths': _require_string_list(value.get('read_paths', []), field='inputs.read_paths'),
         'write_paths': _require_string_list(value.get('write_paths', []), field='inputs.write_paths'),
@@ -197,20 +198,20 @@ def build_fix_plan(report_payload: dict[str, Any]) -> dict[str, Any]:
 
 def _normalize_fix_plan(payload: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(payload, dict):
-        raise ValueError('fix plan payload must be a JSON object')
+        raise ReportError('fix plan payload must be a JSON object')
     if payload.get('$schema') != FIX_PLAN_SCHEMA:
-        raise ValueError("fix plan field '$schema' does not match this renderer")
+        raise ReportError("fix plan field '$schema' does not match this renderer")
     if payload.get('format_version') != FIX_PLAN_FORMAT_VERSION:
-        raise ValueError("fix plan field 'format_version' does not match this renderer")
+        raise ReportError("fix plan field 'format_version' does not match this renderer")
 
     remediations = payload.get('remediations')
     if not isinstance(remediations, list):
-        raise ValueError("fix plan field 'remediations' must be a list")
+        raise ReportError("fix plan field 'remediations' must be a list")
 
     normalized_remediations: list[dict[str, Any]] = []
     for index, remediation in enumerate(remediations):
         if not isinstance(remediation, dict):
-            raise ValueError(f"fix plan field 'remediations[{index}]' must be a JSON object")
+            raise ReportError(f"fix plan field 'remediations[{index}]' must be a JSON object")
         normalized_remediations.append(
             {
                 'rule_id': _require_string(remediation.get('rule_id'), field=f'remediations[{index}].rule_id'),
@@ -270,7 +271,7 @@ def render_fix_plan(payload: dict[str, Any], *, format: str = 'text') -> str:
     if format == 'markdown':
         return _render_markdown(plan)
     if format != 'text':
-        raise ValueError("fix plan format must be 'text' or 'markdown'")
+        raise ReportError("fix plan format must be 'text' or 'markdown'")
     return _render_text(plan)
 
 

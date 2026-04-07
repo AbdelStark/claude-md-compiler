@@ -4,6 +4,18 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 import tomllib
 
+from cldc.errors import (
+    CldcError,
+    EvidenceError,
+    LockfileError,
+    PolicySourceError,
+    PresetError,
+    PresetNotFoundError,
+    RepoBoundaryError,
+    ReportError,
+    RuleValidationError,
+)
+
 
 def _read_source_version() -> str:
     pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
@@ -22,4 +34,15 @@ except PackageNotFoundError:
     __version__ = _read_source_version()
 
 
-__all__ = ["__version__"]
+__all__ = [
+    "__version__",
+    "CldcError",
+    "EvidenceError",
+    "LockfileError",
+    "PolicySourceError",
+    "PresetError",
+    "PresetNotFoundError",
+    "RepoBoundaryError",
+    "ReportError",
+    "RuleValidationError",
+]

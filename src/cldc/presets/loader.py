@@ -11,13 +11,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from cldc.errors import PresetNotFoundError  # re-export
+
 PRESET_SOURCE_KIND = "preset"
 _PACKS_DIR = Path(__file__).parent / "packs"
 _PRESET_SUFFIX = ".yml"
 
-
-class PresetNotFoundError(LookupError):
-    """Raised when a requested preset name is not bundled with `cldc`."""
+__all__ = [
+    "PRESET_SOURCE_KIND",
+    "PresetMetadata",
+    "PresetNotFoundError",
+    "list_presets",
+    "load_preset",
+    "preset_path",
+]
 
 
 @dataclass(frozen=True)
