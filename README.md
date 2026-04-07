@@ -17,16 +17,52 @@ Early implementation phase. The repo now ships a working `cldc` CLI with `compil
 
 ## Install
 ```bash
-python -m pip install -e .
+uv tool install claude-md-compiler
 cldc --version
-cldc fix --help
 ```
 
-## Release validation
+Install directly from GitHub before the package is published:
+
 ```bash
-python -m pytest -q
-python -m build
-cldc doctor . --json
+uv tool install git+https://github.com/AbdelStark/claude-md-compiler
+```
+
+Set up a contributor checkout with the pinned Python and locked dev dependencies:
+
+```bash
+uv sync
+uv run cldc --version
+uv run pytest -q
+```
+
+If you only want the local checkout as a CLI tool, install it into your user tool environment:
+
+```bash
+uv tool install --editable .
+```
+
+`uv sync` creates `.venv`, installs the project in editable mode, and uses the committed `uv.lock` for repeatable contributor environments.
+
+## Build and release validation
+```bash
+uv build --clear
+uv run pytest -q
+uv run --isolated --no-project --with dist/*.whl tests/smoke_test.py
+uv run --isolated --no-project --with dist/*.tar.gz tests/smoke_test.py
+```
+
+Manual publishing stays one command after a successful build:
+
+```bash
+uv publish --dry-run
+uv publish
+```
+
+The repo also includes GitHub Actions workflows for CI and tag-driven PyPI publishing. Once PyPI trusted publishing is configured, shipping a release becomes:
+
+```bash
+git tag -a v0.1.0 -m v0.1.0
+git push --tags
 ```
 
 ## Local usage
@@ -79,6 +115,11 @@ cldc fix . --report-file artifacts/policy-report.json --json --output artifacts/
 `--output` writes the same content shown on stdout to disk and creates parent directories automatically, so CI or agent wrappers can publish stable artifacts without shell redirection tricks.
 
 ## Shipping notes
+- `uv tool install claude-md-compiler` is the primary end-user install path once the package is published.
+- `uv sync` is the primary contributor setup path; it installs the project plus the `dev` dependency group from `uv.lock`.
+- `uv build --clear` produces both the wheel and source distribution in `dist/`.
+- `tests/smoke_test.py` is designed to run against the built wheel or sdist so packaging regressions fail before publishing.
+- `.github/workflows/publish.yml` expects a GitHub environment named `pypi` plus a matching PyPI trusted publisher configuration.
 - `cldc compile` must be rerun whenever policy sources change; the lockfile now carries a source digest and `doctor` / `check` will reject content drift even if timestamps are misleading.
 - `cldc check` expects paths to stay inside the discovered repo root and will reject paths that escape it.
 - `cldc check --events-file` and `cldc check --stdin-json` accept JSON shaped like `{"read_paths":[],"write_paths":[],"commands":[],"claims":[],"events":[...]}` where each event is a `read`, `write`, `command`, or `claim` object.
