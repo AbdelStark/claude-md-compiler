@@ -382,11 +382,13 @@ class DecisionPanel(Vertical):
         self._body: VerticalScroll | None = None
 
     def compose(self) -> ComposeResult:
-        self._banner = Static("Press R to run a check", id="decision-banner")
-        self._banner.set_classes("decision-idle")
-        yield self._banner
-        self._body = VerticalScroll(id="decision-body")
-        yield self._body
+        banner = Static("Press R to run a check", id="decision-banner")
+        banner.set_classes("decision-idle")
+        self._banner = banner
+        yield banner
+        body = VerticalScroll(id="decision-body")
+        self._body = body
+        yield body
 
     def watch_state(self, state: TuiState | None) -> None:
         if state is None or self._banner is None or self._body is None:

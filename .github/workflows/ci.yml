@@ -64,8 +64,14 @@ jobs:
           python-version: "3.14"
           enable-cache: true
 
+      - name: Sync project
+        # Pyright needs the project's runtime dependencies on its import
+        # path to resolve types. `uv sync` materializes them in the lockfile
+        # venv that `uv run pyright` then picks up.
+        run: uv sync
+
       - name: Pyright
-        run: uvx --from 'pyright>=1.1' pyright src
+        run: uv run --with 'pyright>=1.1' pyright src
 
   coverage:
     name: Coverage
