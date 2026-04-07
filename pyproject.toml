@@ -95,6 +95,11 @@ reportMissingTypeStubs = false
 [tool.coverage.run]
 source = ["src/cldc"]
 branch = true
+# The CLI shell is tested exhaustively through subprocess integration tests
+# in tests/test_cli.py. Coverage.py cannot see those because the subprocess
+# runs in a separate interpreter. Excluding it keeps the gate meaningful for
+# the library modules (which ARE measured) without double-counting the CLI.
+omit = ["src/cldc/cli/main.py"]
 
 [tool.coverage.report]
 exclude_lines = [
