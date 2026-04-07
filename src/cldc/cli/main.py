@@ -317,6 +317,8 @@ def _render_check_result(report, json_output: bool, *, git_metadata: dict[str, o
         lines.append(f"  next step: {violation.recommended_action}")
         if violation.matched_paths:
             lines.append(f"  matched paths: {', '.join(violation.matched_paths)}")
+        if violation.matched_commands:
+            lines.append(f"  matched commands: {', '.join(violation.matched_commands)}")
         if violation.required_paths:
             lines.append(f"  required reads: {', '.join(violation.required_paths)}")
         if violation.required_commands:

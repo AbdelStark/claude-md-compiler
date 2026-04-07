@@ -85,6 +85,12 @@ def _suggested_commands(violation: dict[str, Any]) -> list[str]:
     return []
 
 
+def _forbidden_commands(violation: dict[str, Any]) -> list[str]:
+    if violation["kind"] == "forbid_command":
+        return _dedupe(violation.get("matched_commands", []))
+    return []
+
+
 def _suggested_claims(violation: dict[str, Any]) -> list[str]:
     if violation["kind"] == "require_claim":
         return _dedupe(violation.get("required_claims", []))
@@ -118,6 +124,14 @@ def _steps_for_violation(violation: dict[str, Any]) -> list[str]:
             f"Run the required validation command(s) before finishing work on {matched_display}: {required_command_display}.",
             "Review the command output and address any failures before marking the change complete.",
             "Re-run `cldc check` or `cldc ci` after validation succeeds.",
+        ]
+    if violation["kind"] == "forbid_command":
+        forbidden_display = ", ".join(violation.get("matched_commands", [])) or "the forbidden command(s)"
+        scope_display = matched_display if matched_paths else "this repository"
+        return [
+            f"Stop running {forbidden_display}; rule '{violation['rule_id']}' forbids it in {scope_display}.",
+            f"Undo any side effects caused by {forbidden_display} and replace it with an allowed alternative.",
+            "Re-run `cldc check` or `cldc ci` after the forbidden command(s) are removed from the workflow.",
         ]
     if violation["kind"] == "couple_change":
         return [
@@ -169,6 +183,7 @@ def build_fix_plan(report_payload: dict[str, Any]) -> dict[str, Any]:
                 "why": violation["explanation"],
                 "recommended_action": violation["recommended_action"],
                 "suggested_commands": _suggested_commands(violation),
+                "forbidden_commands": _forbidden_commands(violation),
                 "suggested_claims": _suggested_claims(violation),
                 "files_to_inspect": _files_to_inspect(violation),
                 "steps": _steps_for_violation(violation),
@@ -225,6 +240,9 @@ def _normalize_fix_plan(payload: dict[str, Any]) -> dict[str, Any]:
                 ),
                 "suggested_commands": _require_string_list(
                     remediation.get("suggested_commands", []), field=f"remediations[{index}].suggested_commands"
+                ),
+                "forbidden_commands": _require_string_list(
+                    remediation.get("forbidden_commands", []), field=f"remediations[{index}].forbidden_commands"
                 ),
                 "suggested_claims": _require_string_list(
                     remediation.get("suggested_claims", []), field=f"remediations[{index}].suggested_claims"
@@ -294,6 +312,8 @@ def _render_text(plan: dict[str, Any]) -> str:
             lines.append(f"   Files to inspect: {', '.join(remediation['files_to_inspect'])}")
         if remediation["suggested_commands"]:
             lines.append(f"   Suggested commands: {', '.join(remediation['suggested_commands'])}")
+        if remediation["forbidden_commands"]:
+            lines.append(f"   Forbidden commands: {', '.join(remediation['forbidden_commands'])}")
         if remediation["suggested_claims"]:
             lines.append(f"   Suggested claims: {', '.join(remediation['suggested_claims'])}")
         lines.append("   Steps:")
@@ -335,6 +355,8 @@ def _render_markdown(plan: dict[str, Any]) -> str:
             lines.append(f"- **Files to inspect:** `{', '.join(remediation['files_to_inspect'])}`")
         if remediation["suggested_commands"]:
             lines.append(f"- **Suggested commands:** `{', '.join(remediation['suggested_commands'])}`")
+        if remediation["forbidden_commands"]:
+            lines.append(f"- **Forbidden commands:** `{', '.join(remediation['forbidden_commands'])}`")
         if remediation["suggested_claims"]:
             lines.append(f"- **Suggested claims:** `{', '.join(remediation['suggested_claims'])}`")
         lines.append("- **Steps:**")

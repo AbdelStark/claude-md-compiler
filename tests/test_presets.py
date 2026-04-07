@@ -155,6 +155,29 @@ def test_compile_repo_policy_with_strict_preset_enforces_ci_green_claim(tmp_path
     assert cleared.decision == "pass"
 
 
+def test_compile_repo_policy_with_strict_preset_forbids_raw_pip_install(tmp_path):
+    _minimal_repo_with_extends(tmp_path, ["strict"])
+    compile_repo_policy(tmp_path)
+
+    blocked = check_repo_policy(
+        tmp_path,
+        write_paths=["pyproject.toml"],
+        commands=["pip install"],
+        claims=["ci-green"],
+    )
+    rule_ids = [violation.rule_id for violation in blocked.violations]
+    assert "preset-strict-forbid-raw-pip-install" in rule_ids
+    assert blocked.decision == "block"
+
+    clean = check_repo_policy(
+        tmp_path,
+        write_paths=["pyproject.toml"],
+        commands=["uv sync --locked"],
+        claims=["ci-green"],
+    )
+    assert "preset-strict-forbid-raw-pip-install" not in [v.rule_id for v in clean.violations]
+
+
 def test_doctor_repo_policy_with_extends_does_not_crash_on_preset_paths(tmp_path):
     """Regression: `doctor` used to call `Path.stat()` on `preset:*` paths."""
 
