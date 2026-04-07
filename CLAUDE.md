@@ -60,7 +60,7 @@ uv run cldc fix tests/fixtures/repo_a --write src/main.py --json
 ## Gotchas
 
 - This repository has a top-level `CLAUDE.md` for agent context, but it intentionally contains no `cldc` rules.
-- `claim` events are accepted in JSON payloads and preserved in reports, but they are not enforced yet.
+- `require_claim` is a path-scoped rule: writes matching `when_paths` fail the rule unless at least one of the listed `claims` is asserted via `--claim`, an events file, stdin JSON, or an event payload.
 - `couple_change` means a write matching `paths` requires an additional write matching `when_paths`; the same path does not satisfy both sides of the rule.
 - `compile` updates the lockfile state in its returned metadata; missing-lockfile warnings from discovery should not survive a successful compile.
 
@@ -72,13 +72,13 @@ Implemented:
 
 - deterministic source discovery and lockfile generation
 - doctor diagnostics for malformed, stale, and drifted artifacts
-- runtime enforcement for `deny_write`, `require_read`, `require_command`, and `couple_change`
+- runtime enforcement for `deny_write`, `require_read`, `require_command`, `couple_change`, and `require_claim`
+- claim ingestion via `--claim`, events file, stdin JSON, and event payloads
 - saved policy report rendering and deterministic fix-plan generation
 - git-aware CI entrypoints for staged and base/head diffs
 
 Known limitations:
 
 - no preset policy packs
-- no claim enforcement
 - no automatic repo mutation or autofix execution
 - no separate lint/type/coverage enforcement in CI yet

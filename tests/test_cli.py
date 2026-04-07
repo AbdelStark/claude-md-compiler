@@ -866,6 +866,211 @@ def test_cli_explain_and_fix_support_saved_artifact_export(tmp_path):
 
 
 
+def test_cli_check_command_enforces_require_claim_rule(tmp_path):
+    target = tmp_path / 'repo'
+    target.mkdir()
+    (target / 'CLAUDE.md').write_text(
+        "```cldc\n"
+        "rules:\n"
+        "  - id: qa-sign-off\n"
+        "    kind: require_claim\n"
+        "    mode: block\n"
+        "    when_paths: ['src/**']\n"
+        "    claims: ['qa-reviewed']\n"
+        "    message: QA must sign off before editing source.\n"
+        "```\n"
+    )
+
+    compile_result = subprocess.run(
+        [sys.executable, '-m', 'cldc.cli.main', 'compile', str(target)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert compile_result.returncode == 0, compile_result.stderr
+
+    missing_claim_result = subprocess.run(
+        [
+            sys.executable,
+            '-m', 'cldc.cli.main', 'check', str(target),
+            '--write', 'src/app.py',
+            '--json',
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+
+    assert missing_claim_result.returncode == 2, missing_claim_result.stderr
+    payload = json.loads(missing_claim_result.stdout)
+    assert payload['decision'] == 'block'
+    assert payload['blocking_violation_count'] == 1
+    assert payload['violations'][0]['rule_id'] == 'qa-sign-off'
+    assert payload['violations'][0]['kind'] == 'require_claim'
+    assert payload['violations'][0]['required_claims'] == ['qa-reviewed']
+    assert payload['violations'][0]['matched_claims'] == []
+
+    passing_result = subprocess.run(
+        [
+            sys.executable,
+            '-m', 'cldc.cli.main', 'check', str(target),
+            '--write', 'src/app.py',
+            '--claim', 'qa-reviewed',
+            '--json',
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert passing_result.returncode == 0, passing_result.stderr
+    passing_payload = json.loads(passing_result.stdout)
+    assert passing_payload['decision'] == 'pass'
+    assert passing_payload['inputs']['claims'] == ['qa-reviewed']
+
+
+def test_cli_check_text_output_surfaces_required_claims(tmp_path):
+    target = tmp_path / 'repo'
+    target.mkdir()
+    (target / 'CLAUDE.md').write_text(
+        "```cldc\n"
+        "rules:\n"
+        "  - id: qa-sign-off\n"
+        "    kind: require_claim\n"
+        "    mode: warn\n"
+        "    when_paths: ['src/**']\n"
+        "    claims: ['qa-reviewed']\n"
+        "    message: QA must sign off before editing source.\n"
+        "```\n"
+    )
+
+    compile_result = subprocess.run(
+        [sys.executable, '-m', 'cldc.cli.main', 'compile', str(target)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert compile_result.returncode == 0, compile_result.stderr
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            '-m', 'cldc.cli.main', 'check', str(target),
+            '--write', 'src/app.py',
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert 'Policy check: warn' in result.stdout
+    assert 'qa-sign-off (require_claim)' in result.stdout
+    assert 'required claims: qa-reviewed' in result.stdout
+    assert 'next step: Record one of the required claims before finishing: qa-reviewed.' in result.stdout
+
+
+def test_cli_check_command_accepts_events_file_with_claim_rule(tmp_path):
+    target = tmp_path / 'repo'
+    target.mkdir()
+    (target / 'CLAUDE.md').write_text(
+        "```cldc\n"
+        "rules:\n"
+        "  - id: qa-sign-off\n"
+        "    kind: require_claim\n"
+        "    mode: block\n"
+        "    when_paths: ['src/**']\n"
+        "    claims: ['qa-reviewed']\n"
+        "    message: QA must sign off before editing source.\n"
+        "```\n"
+    )
+    events_path = tmp_path / 'events.json'
+    events_path.write_text(
+        json.dumps(
+            {
+                'events': [
+                    {'kind': 'write', 'path': 'src/app.py'},
+                    {'kind': 'claim', 'claim': 'qa-reviewed'},
+                ]
+            }
+        )
+    )
+
+    compile_result = subprocess.run(
+        [sys.executable, '-m', 'cldc.cli.main', 'compile', str(target)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert compile_result.returncode == 0, compile_result.stderr
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            '-m', 'cldc.cli.main', 'check', str(target),
+            '--events-file', str(events_path),
+            '--json',
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload['decision'] == 'pass'
+    assert payload['inputs']['claims'] == ['qa-reviewed']
+
+
+def test_cli_fix_command_renders_require_claim_remediation(tmp_path):
+    target = tmp_path / 'repo'
+    target.mkdir()
+    (target / 'CLAUDE.md').write_text(
+        "```cldc\n"
+        "rules:\n"
+        "  - id: qa-sign-off\n"
+        "    kind: require_claim\n"
+        "    mode: block\n"
+        "    when_paths: ['src/**']\n"
+        "    claims: ['qa-reviewed']\n"
+        "    message: QA must sign off before editing source.\n"
+        "```\n"
+    )
+
+    compile_result = subprocess.run(
+        [sys.executable, '-m', 'cldc.cli.main', 'compile', str(target)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert compile_result.returncode == 0, compile_result.stderr
+
+    fix_result = subprocess.run(
+        [
+            sys.executable,
+            '-m', 'cldc.cli.main', 'fix', str(target),
+            '--write', 'src/app.py',
+            '--format', 'markdown',
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+
+    assert fix_result.returncode == 0, fix_result.stderr
+    assert '# Policy Fix Plan' in fix_result.stdout
+    assert 'qa-sign-off' in fix_result.stdout
+    assert '**Suggested claims:** `qa-reviewed`' in fix_result.stdout
+
+
 def test_cli_help_exposes_version_and_absolute_path_support():
     result = subprocess.run(
         [sys.executable, '-m', 'cldc.cli.main', 'check', '--help'],
@@ -880,6 +1085,7 @@ def test_cli_help_exposes_version_and_absolute_path_support():
     assert '--events-file' in result.stdout
     assert '--stdin-json' in result.stdout
     assert '--output' in result.stdout
+    assert '--claim' in result.stdout
     assert 'discovered' in result.stdout
 
     ci_help = subprocess.run(

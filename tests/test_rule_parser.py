@@ -46,3 +46,67 @@ def test_parse_rule_documents_rejects_missing_kind_specific_fields(tmp_path):
 
     with pytest.raises(ValueError, match="requires field 'before_paths'"):
         parse_rule_documents(bundle)
+
+
+def test_parse_rule_documents_accepts_require_claim_rule(tmp_path):
+    (tmp_path / 'CLAUDE.md').write_text(
+        "```cldc\n"
+        "rules:\n"
+        "  - id: qa-sign-off\n"
+        "    kind: require_claim\n"
+        "    mode: block\n"
+        "    when_paths: ['src/**']\n"
+        "    claims: ['qa-reviewed', 'security-reviewed']\n"
+        "    message: QA must sign off before editing source.\n"
+        "```\n"
+    )
+
+    bundle = load_policy_sources(tmp_path)
+    parsed = parse_rule_documents(bundle)
+
+    assert len(parsed.rules) == 1
+    rule = parsed.rules[0]
+    assert rule.rule_id == 'qa-sign-off'
+    assert rule.kind == 'require_claim'
+    assert rule.mode == 'block'
+    assert rule.when_paths == ['src/**']
+    assert rule.claims == ['qa-reviewed', 'security-reviewed']
+
+    serialized = rule.to_dict()
+    assert serialized['kind'] == 'require_claim'
+    assert serialized['claims'] == ['qa-reviewed', 'security-reviewed']
+    assert serialized['when_paths'] == ['src/**']
+
+
+def test_parse_rule_documents_rejects_require_claim_without_claims(tmp_path):
+    (tmp_path / 'CLAUDE.md').write_text(
+        "```cldc\n"
+        "rules:\n"
+        "  - id: missing-claims\n"
+        "    kind: require_claim\n"
+        "    when_paths: ['src/**']\n"
+        "    message: needs claim\n"
+        "```\n"
+    )
+
+    bundle = load_policy_sources(tmp_path)
+
+    with pytest.raises(ValueError, match="requires field 'claims'"):
+        parse_rule_documents(bundle)
+
+
+def test_parse_rule_documents_rejects_require_claim_without_when_paths(tmp_path):
+    (tmp_path / 'CLAUDE.md').write_text(
+        "```cldc\n"
+        "rules:\n"
+        "  - id: missing-when-paths\n"
+        "    kind: require_claim\n"
+        "    claims: ['qa-reviewed']\n"
+        "    message: needs scope\n"
+        "```\n"
+    )
+
+    bundle = load_policy_sources(tmp_path)
+
+    with pytest.raises(ValueError, match="requires field 'when_paths'"):
+        parse_rule_documents(bundle)

@@ -117,6 +117,19 @@ rules:
 | `require_read` | Writing `paths` requires a prior read matching `before_paths`. |
 | `require_command` | Writing `when_paths` requires at least one listed command to run. |
 | `couple_change` | Writing `paths` requires a companion write matching `when_paths`. |
+| `require_claim` | Writing `when_paths` requires at least one listed policy `claims` to be asserted. |
+
+Example `require_claim` rule — block edits to `src/**` until a reviewer asserts `qa-reviewed`:
+
+```yaml
+rules:
+  - id: qa-sign-off
+    kind: require_claim
+    mode: block
+    when_paths: ["src/**"]
+    claims: ["qa-reviewed", "security-reviewed"]
+    message: QA or security must sign off before editing source.
+```
 
 | Mode | Meaning |
 | --- | --- |
@@ -131,7 +144,7 @@ Runtime commands accept evidence three ways:
 
 ```bash
 # direct flags
-cldc check . --read docs/spec.md --write src/main.py --command "pytest -q"
+cldc check . --read docs/spec.md --write src/main.py --command "pytest -q" --claim qa-reviewed
 
 # JSON file
 cldc check . --events-file .cldc-events.json --json
@@ -139,6 +152,8 @@ cldc check . --events-file .cldc-events.json --json
 # stdin JSON
 cat .cldc-events.json | cldc check . --stdin-json --json
 ```
+
+Use `--claim` once per asserted claim; claims satisfy `require_claim` rules in the compiled policy.
 
 Accepted payload shape:
 

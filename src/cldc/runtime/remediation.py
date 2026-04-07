@@ -84,6 +84,12 @@ def _suggested_commands(violation: dict[str, Any]) -> list[str]:
     return []
 
 
+def _suggested_claims(violation: dict[str, Any]) -> list[str]:
+    if violation['kind'] == 'require_claim':
+        return _dedupe(violation.get('required_claims', []))
+    return []
+
+
 def _steps_for_violation(violation: dict[str, Any]) -> list[str]:
     matched_paths = violation.get('matched_paths', [])
     matched_display = ', '.join(matched_paths) if matched_paths else 'the affected paths'
@@ -91,6 +97,8 @@ def _steps_for_violation(violation: dict[str, Any]) -> list[str]:
     required_path_display = ', '.join(required_paths) if required_paths else 'the required policy context'
     required_commands = violation.get('required_commands', [])
     required_command_display = ', '.join(required_commands) if required_commands else 'the required validation commands'
+    required_claims = violation.get('required_claims', [])
+    required_claim_display = ', '.join(required_claims) if required_claims else 'the required policy claims'
 
     if violation['kind'] == 'deny_write':
         return [
@@ -115,6 +123,12 @@ def _steps_for_violation(violation: dict[str, Any]) -> list[str]:
             f"Update at least one coupled path alongside {matched_display}: {required_path_display}.",
             f"Review whether the change in {matched_display} should also update tests, docs, or related files matched by {required_path_display}.",
             "Re-run `cldc check` or `cldc ci` after the coupled change is included.",
+        ]
+    if violation['kind'] == 'require_claim':
+        return [
+            f"Record at least one required claim before keeping changes to {matched_display}: {required_claim_display}.",
+            f"Confirm the workflow that produces {required_claim_display} has actually completed (sign-off, review, acknowledgement) and pass the claim with --claim or via an execution-input payload.",
+            "Re-run `cldc check` or `cldc ci` after the claim is asserted.",
         ]
     return [
         "Inspect the matched rule and evidence to understand why the policy fired.",
@@ -154,6 +168,7 @@ def build_fix_plan(report_payload: dict[str, Any]) -> dict[str, Any]:
                 'why': violation['explanation'],
                 'recommended_action': violation['recommended_action'],
                 'suggested_commands': _suggested_commands(violation),
+                'suggested_claims': _suggested_claims(violation),
                 'files_to_inspect': _files_to_inspect(violation),
                 'steps': _steps_for_violation(violation),
                 'source_path': violation.get('source_path'),
@@ -209,6 +224,9 @@ def _normalize_fix_plan(payload: dict[str, Any]) -> dict[str, Any]:
                 ),
                 'suggested_commands': _require_string_list(
                     remediation.get('suggested_commands', []), field=f'remediations[{index}].suggested_commands'
+                ),
+                'suggested_claims': _require_string_list(
+                    remediation.get('suggested_claims', []), field=f'remediations[{index}].suggested_claims'
                 ),
                 'files_to_inspect': _require_string_list(
                     remediation.get('files_to_inspect', []), field=f'remediations[{index}].files_to_inspect'
@@ -281,6 +299,8 @@ def _render_text(plan: dict[str, Any]) -> str:
             lines.append(f"   Files to inspect: {', '.join(remediation['files_to_inspect'])}")
         if remediation['suggested_commands']:
             lines.append(f"   Suggested commands: {', '.join(remediation['suggested_commands'])}")
+        if remediation['suggested_claims']:
+            lines.append(f"   Suggested claims: {', '.join(remediation['suggested_claims'])}")
         lines.append('   Steps:')
         for step in remediation['steps']:
             lines.append(f"   - {step}")
@@ -320,6 +340,8 @@ def _render_markdown(plan: dict[str, Any]) -> str:
             lines.append(f"- **Files to inspect:** `{', '.join(remediation['files_to_inspect'])}`")
         if remediation['suggested_commands']:
             lines.append(f"- **Suggested commands:** `{', '.join(remediation['suggested_commands'])}`")
+        if remediation['suggested_claims']:
+            lines.append(f"- **Suggested claims:** `{', '.join(remediation['suggested_claims'])}`")
         lines.append('- **Steps:**')
         for step in remediation['steps']:
             lines.append(f"  - {step}")

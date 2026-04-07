@@ -97,11 +97,17 @@ def _normalize_violation(value: Any, *, index: int) -> dict[str, Any]:
         'matched_commands': _require_string_list(
             value.get('matched_commands', []), field=f'violations[{index}].matched_commands'
         ),
+        'matched_claims': _require_string_list(
+            value.get('matched_claims', []), field=f'violations[{index}].matched_claims'
+        ),
         'required_paths': _require_string_list(
             value.get('required_paths', []), field=f'violations[{index}].required_paths'
         ),
         'required_commands': _require_string_list(
             value.get('required_commands', []), field=f'violations[{index}].required_commands'
+        ),
+        'required_claims': _require_string_list(
+            value.get('required_claims', []), field=f'violations[{index}].required_claims'
         ),
         'source_path': _optional_string(value.get('source_path'), field=f'violations[{index}].source_path'),
         'source_block_id': _optional_string(
@@ -256,10 +262,14 @@ def _render_text(report: dict[str, Any]) -> str:
             lines.append(f"   Matched paths: {_join(violation['matched_paths'])}")
         if violation['matched_commands']:
             lines.append(f"   Matched commands: {_join(violation['matched_commands'])}")
+        if violation['matched_claims']:
+            lines.append(f"   Matched claims: {_join(violation['matched_claims'])}")
         if violation['required_paths']:
             lines.append(f"   Required reads: {_join(violation['required_paths'])}")
         if violation['required_commands']:
             lines.append(f"   Required commands: {_join(violation['required_commands'])}")
+        if violation['required_claims']:
+            lines.append(f"   Required claims: {_join(violation['required_claims'])}")
     return '\n'.join(lines)
 
 
@@ -315,9 +325,13 @@ def _render_markdown(report: dict[str, Any]) -> str:
             lines.append(f"- **Matched paths:** `{_join(violation['matched_paths'])}`")
         if violation['matched_commands']:
             lines.append(f"- **Matched commands:** `{_join(violation['matched_commands'])}`")
+        if violation['matched_claims']:
+            lines.append(f"- **Matched claims:** `{_join(violation['matched_claims'])}`")
         if violation['required_paths']:
             lines.append(f"- **Required reads:** `{_join(violation['required_paths'])}`")
         if violation['required_commands']:
             lines.append(f"- **Required commands:** `{_join(violation['required_commands'])}`")
+        if violation['required_claims']:
+            lines.append(f"- **Required claims:** `{_join(violation['required_claims'])}`")
         lines.append('')
     return '\n'.join(lines).rstrip()

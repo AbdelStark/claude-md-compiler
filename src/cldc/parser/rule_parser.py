@@ -7,13 +7,20 @@ import yaml
 
 from cldc.ingest.source_loader import SourceBundle
 
-ALLOWED_RULE_KINDS = {"require_read", "deny_write", "require_command", "couple_change"}
+ALLOWED_RULE_KINDS = {
+    "require_read",
+    "deny_write",
+    "require_command",
+    "couple_change",
+    "require_claim",
+}
 ALLOWED_MODES = {"observe", "warn", "block", "fix"}
 REQUIRED_FIELDS_BY_KIND = {
     "deny_write": ("paths",),
     "require_read": ("paths", "before_paths"),
     "require_command": ("commands", "when_paths"),
     "couple_change": ("paths", "when_paths"),
+    "require_claim": ("claims", "when_paths"),
 }
 
 
@@ -29,6 +36,7 @@ class RuleDefinition:
     before_paths: list[str] | None = None
     when_paths: list[str] | None = None
     commands: list[str] | None = None
+    claims: list[str] | None = None
     source_path: str | None = None
     source_block_id: str | None = None
 
@@ -91,6 +99,7 @@ def _validate_rule_item(item: dict[str, Any]) -> None:
         "before_paths": _optional_str_list(item, "before_paths"),
         "when_paths": _optional_str_list(item, "when_paths"),
         "commands": _optional_str_list(item, "commands"),
+        "claims": _optional_str_list(item, "claims"),
     }
     for field_name in REQUIRED_FIELDS_BY_KIND[item["kind"]]:
         if not fields[field_name]:
@@ -115,6 +124,7 @@ def _coerce_rules(source, raw: str) -> list[RuleDefinition]:
                 before_paths=item.get("before_paths"),
                 when_paths=item.get("when_paths"),
                 commands=item.get("commands"),
+                claims=item.get("claims"),
                 source_path=source.path,
                 source_block_id=source.block_id,
             )

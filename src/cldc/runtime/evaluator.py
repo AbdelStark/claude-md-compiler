@@ -17,7 +17,13 @@ from cldc.runtime.report_schema import CHECK_REPORT_FORMAT_VERSION, CHECK_REPORT
 BLOCKING_MODES = {"block", "fix"}
 NON_BLOCKING_MODES = {"observe", "warn"}
 ALLOWED_MODES = BLOCKING_MODES | NON_BLOCKING_MODES
-ALLOWED_RULE_KINDS = {"deny_write", "require_read", "require_command", "couple_change"}
+ALLOWED_RULE_KINDS = {
+    "deny_write",
+    "require_read",
+    "require_command",
+    "couple_change",
+    "require_claim",
+}
 
 
 @dataclass(frozen=True)
@@ -32,8 +38,10 @@ class Violation:
     recommended_action: str
     matched_paths: list[str]
     matched_commands: list[str]
+    matched_claims: list[str]
     required_paths: list[str]
     required_commands: list[str]
+    required_claims: list[str]
     source_path: str | None
     source_block_id: str | None
 
@@ -120,6 +128,12 @@ def _matching_commands(commands: list[str], expected: list[str] | None) -> list[
     if not expected:
         return []
     return [command for command in commands if command in expected]
+
+
+def _matching_claims(claims: list[str], expected: list[str] | None) -> list[str]:
+    if not expected:
+        return []
+    return [claim for claim in claims if claim in expected]
 
 
 def _matching_coupled_paths(
@@ -237,6 +251,7 @@ def _explain_violation(
     matched_commands: list[str],
     required_paths: list[str],
     required_commands: list[str],
+    required_claims: list[str],
 ) -> tuple[str, str]:
     rule_id = str(rule.get("id", "<unknown>"))
     kind = str(rule.get("kind", "<unknown>"))
@@ -244,6 +259,7 @@ def _explain_violation(
     command_list = _join_for_humans(matched_commands)
     required_path_list = _join_for_humans(required_paths)
     required_command_list = _join_for_humans(required_commands)
+    required_claim_list = _join_for_humans(required_claims)
 
     if kind == "deny_write":
         return (
@@ -265,6 +281,11 @@ def _explain_violation(
             f"Write activity {path_list} triggered couple_change rule '{rule_id}', but no coupled change matched {required_path_list}.",
             f"Update at least one path matching {required_path_list} alongside {path_list}.",
         )
+    if kind == "require_claim":
+        return (
+            f"Write activity {path_list} triggered require_claim rule '{rule_id}', but no required claim matched {required_claim_list}.",
+            f"Record one of the required claims before finishing: {required_claim_list}.",
+        )
     return (
         f"Rule '{rule_id}' triggered for paths {path_list} and commands {command_list}.",
         "Inspect the matched rule and input evidence, then rerun the policy check.",
@@ -277,19 +298,24 @@ def _build_violation(
     default_mode: str,
     matched_paths: list[str] | None = None,
     matched_commands: list[str] | None = None,
+    matched_claims: list[str] | None = None,
     required_paths: list[str] | None = None,
     required_commands: list[str] | None = None,
+    required_claims: list[str] | None = None,
 ) -> Violation:
     normalized_matched_paths = list(matched_paths or [])
     normalized_matched_commands = list(matched_commands or [])
+    normalized_matched_claims = list(matched_claims or [])
     normalized_required_paths = list(required_paths or [])
     normalized_required_commands = list(required_commands or [])
+    normalized_required_claims = list(required_claims or [])
     explanation, recommended_action = _explain_violation(
         rule,
         matched_paths=normalized_matched_paths,
         matched_commands=normalized_matched_commands,
         required_paths=normalized_required_paths,
         required_commands=normalized_required_commands,
+        required_claims=normalized_required_claims,
     )
     return Violation(
         rule_id=str(rule.get("id", "<unknown>")),
@@ -300,8 +326,10 @@ def _build_violation(
         recommended_action=recommended_action,
         matched_paths=normalized_matched_paths,
         matched_commands=normalized_matched_commands,
+        matched_claims=normalized_matched_claims,
         required_paths=normalized_required_paths,
         required_commands=normalized_required_commands,
+        required_claims=normalized_required_claims,
         source_path=rule.get("source_path"),
         source_block_id=rule.get("source_block_id"),
     )
@@ -378,6 +406,20 @@ def _evaluate_rule(
             required_paths=list(rule.get("when_paths") or []),
         )
 
+    if kind == "require_claim":
+        triggered_paths = _matching_paths(write_paths, rule.get("when_paths"))
+        if not triggered_paths:
+            return None
+        matched_claims = _matching_claims(claims, rule.get("claims"))
+        if matched_claims:
+            return None
+        return _build_violation(
+            rule,
+            default_mode=default_mode,
+            matched_paths=triggered_paths,
+            required_claims=list(rule.get("claims") or []),
+        )
+
     triggered_paths = _matching_paths(write_paths, rule.get("when_paths"))
     if not triggered_paths:
         return None
@@ -398,6 +440,7 @@ def check_repo_policy(
     read_paths: list[str] | None = None,
     write_paths: list[str] | None = None,
     commands: list[str] | None = None,
+    claims: list[str] | None = None,
     event_payload: dict[str, Any] | None = None,
 ) -> CheckReport:
     """Evaluate runtime evidence against the compiled policy lockfile for a repo."""
@@ -415,7 +458,7 @@ def check_repo_policy(
     normalized_reads = _normalize_paths([*(read_paths or []), *event_inputs.read_paths], repo_root=root)
     normalized_writes = _normalize_paths([*(write_paths or []), *event_inputs.write_paths], repo_root=root)
     normalized_commands = _normalize_commands([*(commands or []), *event_inputs.commands])
-    normalized_claims = _normalize_commands(event_inputs.claims)
+    normalized_claims = _normalize_commands([*(claims or []), *event_inputs.claims])
 
     violations: list[Violation] = []
     for rule in payload["rules"]:

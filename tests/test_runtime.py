@@ -247,6 +247,128 @@ def test_check_repo_policy_passes_when_couple_change_has_companion_write(tmp_pat
     assert report.violations == []
 
 
+def _write_require_claim_repo(tmp_path):
+    (tmp_path / 'CLAUDE.md').write_text(
+        "```cldc\n"
+        "rules:\n"
+        "  - id: qa-sign-off\n"
+        "    kind: require_claim\n"
+        "    mode: block\n"
+        "    when_paths: ['src/**']\n"
+        "    claims: ['qa-reviewed', 'security-reviewed']\n"
+        "    message: QA must sign off before editing source.\n"
+        "```\n"
+    )
+    compile_repo_policy(tmp_path)
+
+
+def test_check_repo_policy_blocks_require_claim_when_no_claim_asserted(tmp_path):
+    _write_require_claim_repo(tmp_path)
+
+    report = check_repo_policy(tmp_path, write_paths=['src/app.py'])
+
+    assert report.decision == 'block'
+    assert report.ok is False
+    assert report.blocking_violation_count == 1
+    assert report.violation_count == 1
+    violation = report.violations[0]
+    assert violation.rule_id == 'qa-sign-off'
+    assert violation.kind == 'require_claim'
+    assert violation.mode == 'block'
+    assert violation.required_claims == ['qa-reviewed', 'security-reviewed']
+    assert violation.matched_claims == []
+    assert violation.matched_paths == ['src/app.py']
+    assert violation.explanation == (
+        "Write activity src/app.py triggered require_claim rule 'qa-sign-off', "
+        "but no required claim matched qa-reviewed, security-reviewed."
+    )
+    assert violation.recommended_action == (
+        'Record one of the required claims before finishing: qa-reviewed, security-reviewed.'
+    )
+
+    serialized = violation.to_dict()
+    assert serialized['matched_claims'] == []
+    assert serialized['required_claims'] == ['qa-reviewed', 'security-reviewed']
+
+
+def test_check_repo_policy_passes_require_claim_with_explicit_claim(tmp_path):
+    _write_require_claim_repo(tmp_path)
+
+    report = check_repo_policy(
+        tmp_path,
+        write_paths=['src/app.py'],
+        claims=['qa-reviewed'],
+    )
+
+    assert report.decision == 'pass'
+    assert report.violation_count == 0
+    assert report.violations == []
+    assert report.inputs['claims'] == ['qa-reviewed']
+
+
+def test_check_repo_policy_passes_require_claim_via_event_payload(tmp_path):
+    _write_require_claim_repo(tmp_path)
+
+    report = check_repo_policy(
+        tmp_path,
+        event_payload={
+            'events': [
+                {'kind': 'write', 'path': 'src/app.py'},
+                {'kind': 'claim', 'claim': 'security-reviewed'},
+            ]
+        },
+    )
+
+    assert report.decision == 'pass'
+    assert report.inputs['claims'] == ['security-reviewed']
+    assert report.violations == []
+
+
+def test_check_repo_policy_ignores_require_claim_when_scope_paths_not_touched(tmp_path):
+    _write_require_claim_repo(tmp_path)
+
+    # `docs/**` is outside the `when_paths: ['src/**']` scope, so the claim rule must not fire.
+    report = check_repo_policy(tmp_path, write_paths=['docs/README.md'])
+
+    assert report.decision == 'pass'
+    assert report.violations == []
+
+
+def test_check_repo_policy_require_claim_emits_remediation_plan_with_suggested_claims(tmp_path):
+    _write_require_claim_repo(tmp_path)
+    report = check_repo_policy(tmp_path, write_paths=['src/app.py'])
+
+    plan = build_fix_plan(report.to_dict())
+
+    assert plan['remediation_count'] == 1
+    remediation = plan['remediations'][0]
+    assert remediation['rule_id'] == 'qa-sign-off'
+    assert remediation['kind'] == 'require_claim'
+    assert remediation['priority'] == 'blocking'
+    assert remediation['suggested_claims'] == ['qa-reviewed', 'security-reviewed']
+    assert remediation['suggested_commands'] == []
+    assert any(
+        'qa-reviewed' in step and 'security-reviewed' in step
+        for step in remediation['steps']
+    )
+    assert plan['next_action'] == (
+        'Record at least one required claim before keeping changes to src/app.py: '
+        'qa-reviewed, security-reviewed.'
+    )
+
+
+def test_render_fix_plan_for_require_claim_includes_suggested_claims_line(tmp_path):
+    _write_require_claim_repo(tmp_path)
+    report = check_repo_policy(tmp_path, write_paths=['src/app.py'])
+    plan = build_fix_plan(report.to_dict())
+
+    rendered_text = render_fix_plan(plan, format='text')
+    rendered_md = render_fix_plan(plan, format='markdown')
+
+    assert 'Suggested claims: qa-reviewed, security-reviewed' in rendered_text
+    assert '**Suggested claims:** `qa-reviewed, security-reviewed`' in rendered_md
+
+
 def test_check_repo_policy_rejects_unsupported_rule_kinds_in_lockfile(tmp_path):
     (tmp_path / 'CLAUDE.md').write_text(
         "```cldc\nrules:\n  - id: deny\n    kind: deny_write\n    paths: ['generated/**']\n    message: stop\n```\n"

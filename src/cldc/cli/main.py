@@ -33,6 +33,7 @@ def _add_runtime_input_flags(parser: argparse.ArgumentParser, *, include_write: 
     if include_write:
         parser.add_argument("--write", action="append", default=[], dest="write_paths", help="Path written or otherwise touched; repeat for multiple paths")
     parser.add_argument("--command", action="append", default=[], dest="commands", help="Executed command string; repeat for multiple commands")
+    parser.add_argument("--claim", action="append", default=[], dest="claims", help="Asserted policy claim (for example 'qa-reviewed'); repeat for multiple claims")
     parser.add_argument("--events-file", dest="events_file", help="Load execution input JSON from a file and merge it with explicit runtime flags")
     parser.add_argument("--stdin-json", action="store_true", dest="stdin_json", help="Load execution input JSON from stdin and merge it with explicit runtime flags")
 
@@ -242,6 +243,8 @@ def _render_check_result(report, json_output: bool, *, git_metadata: dict[str, o
             lines.append(f"  required reads: {', '.join(violation.required_paths)}")
         if violation.required_commands:
             lines.append(f"  required commands: {', '.join(violation.required_commands)}")
+        if violation.required_claims:
+            lines.append(f"  required claims: {', '.join(violation.required_claims)}")
     return "\n".join(lines)
 
 
@@ -270,6 +273,7 @@ def _has_runtime_inputs(args) -> bool:
         getattr(args, 'read_paths', None)
         or getattr(args, 'write_paths', None)
         or getattr(args, 'commands', None)
+        or getattr(args, 'claims', None)
         or getattr(args, 'events_file', None)
         or getattr(args, 'stdin_json', False)
     )
@@ -297,6 +301,7 @@ def _load_explain_payload(args) -> dict[str, object]:
         read_paths=args.read_paths,
         write_paths=args.write_paths,
         commands=args.commands,
+        claims=args.claims,
         event_payload=_load_cli_event_payload(args),
     )
     return _check_payload(report)
@@ -325,6 +330,7 @@ def _load_fix_payload(args) -> dict[str, object]:
             read_paths=args.read_paths,
             write_paths=args.write_paths,
             commands=args.commands,
+            claims=args.claims,
             event_payload=_load_cli_event_payload(args),
         )
         report_payload = _check_payload(report)
@@ -354,6 +360,7 @@ def main(argv: list[str] | None = None) -> int:
                 read_paths=args.read_paths,
                 write_paths=args.write_paths,
                 commands=args.commands,
+                claims=args.claims,
                 event_payload=_load_cli_event_payload(args),
             )
             _output_text(_render_check_result(report, args.json_output), args.output_path)
@@ -370,6 +377,7 @@ def main(argv: list[str] | None = None) -> int:
                 read_paths=args.read_paths,
                 write_paths=write_paths,
                 commands=args.commands,
+                claims=args.claims,
                 event_payload=_load_cli_event_payload(args),
             )
             _output_text(_render_check_result(report, args.json_output, git_metadata=git_metadata), args.output_path)
