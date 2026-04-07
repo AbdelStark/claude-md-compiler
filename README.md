@@ -19,6 +19,60 @@
 
 `cldc` is a Python CLI that compiles repository policy from `CLAUDE.md`, `.claude-compiler.yaml`, and `policies/*.yml` into a versioned lockfile, then checks file edits, commands, and git diffs against that policy.
 
+## In Plain English
+
+When you use an agentic coding tool (Claude Code, Cursor, Aider, etc.), the agent reads `CLAUDE.md` for "house rules": which folders are off-limits, which docs to consult before editing, which commands must run before a change is considered done. That file is **prose**. The agent decides, on each turn, whether to honor it. There is no enforcement, no audit trail, and no way for CI to check the same rules later.
+
+`cldc` closes that gap with three ideas borrowed from compiler and policy engineering.
+
+### 1. Compile prose into a contract
+
+A compiler turns ambiguous source (human text, high-level code) into a precise artifact (machine code, IR). `cldc` does the same to your agent rules: it reads `CLAUDE.md`, fenced ` ```cldc ` blocks, `.claude-compiler.yaml`, and `policies/*.yml`, validates them against a strict schema, and writes `.claude/policy.lock.json` — a deterministic, sorted, versioned lockfile. From that moment, "the policy" is a hash, not a paragraph. Two machines compiling the same sources produce byte-identical lockfiles. Drift becomes detectable.
+
+### 2. Separate policy, evidence, and decision
+
+Most "AI guardrail" tools tangle these three things together. `cldc` keeps them apart on purpose:
+
+- **Policy** is the set of rules in the lockfile (`deny_write`, `require_read`, `require_command`, `couple_change`, `require_claim`).
+- **Evidence** is what actually happened on a given run: files read, files written, commands executed, claims asserted. You hand it to `cldc` via flags, a JSON file, stdin, or a git diff.
+- **Decision** is the pure function `evaluate(policy, evidence) -> {pass, warn, block}` plus a structured report. No hidden state, no network calls, no LLM in the loop.
+
+This split is the whole point. The agent (or a human, or CI) produces evidence; `cldc` is the judge. The judge never guesses; if required evidence is missing, the rule fails closed.
+
+### 3. The harness, not the model, enforces the rules
+
+In agentic systems, the **harness** is the wrapper around the model: the loop that decides which tool calls to allow, which files to expose, when to stop. Asking the model to police itself is unreliable — the same machinery that hallucinates code can hallucinate compliance. Reliable agentic systems push enforcement *out* of the model and into deterministic code that runs around every tool call or before every commit. `cldc` is built to be that piece. `cldc check` is fast, offline, exit-coded (`0`/`1`/`2`), and JSON-structured precisely so a harness, a pre-commit hook, or a CI step can call it and act on the result without parsing English.
+
+### What this looks like end-to-end
+
+```
+CLAUDE.md             ─┐
+.claude-compiler.yaml ─┼─►  cldc compile  ─►  .claude/policy.lock.json
+policies/*.yml        ─┘                                │
+                                                        ▼
+agent run / git diff / pre-commit ─►  evidence  ─►  cldc check  ─►  pass | warn | block  + JSON report
+                                                                                │
+                                                                                ▼
+                                                                            cldc fix  ─►  remediation plan
+```
+
+You compile once per change to the policy sources. You check on every meaningful action. You `explain` when a result needs a human-readable rendering. You ask `fix` for a plan when you want guidance instead of just a verdict.
+
+### Why a lockfile, specifically
+
+A lockfile is the smallest unit of trust that survives time and travel:
+
+- **Reproducible**: byte-identical from the same inputs, with sorted keys and explicit schema/version fields.
+- **Reviewable**: it diffs cleanly in a PR — policy changes are visible, not buried in a cache.
+- **Refusable**: `cldc check` rejects a stale or schema-drifted lockfile instead of silently re-deriving one. If your `CLAUDE.md` moved and the lockfile didn't, the next check fails until you recompile. That refusal *is* the feature.
+
+### What `cldc` deliberately does *not* do
+
+- It does not call any LLM. There is no model in the runtime path.
+- It does not auto-edit your repo. `fix` produces a plan; humans or the agent execute it.
+- It does not invent rule kinds. Unsupported rules are a hard error, never a silent pass.
+- It does not phone home. Every check is local, offline, and deterministic.
+
 ## Why It Exists
 
 `CLAUDE.md` is usually advisory text. `cldc` turns repo rules into a deterministic artifact that local runs, CI, and review tooling can enforce the same way every time.
