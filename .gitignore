@@ -10,6 +10,7 @@ coverage.xml
 htmlcov/
 .ruff_cache/
 .hypothesis/
+.benchmarks/
 .venv/
 .env
 .env.*

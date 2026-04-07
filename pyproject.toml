@@ -41,6 +41,7 @@ Issues = "https://github.com/AbdelStark/claude-md-compiler/issues"
 dev = [
   "hypothesis>=6",
   "pytest>=8.0",
+  "pytest-benchmark>=4",
   "pytest-cov>=5",
   "ruff>=0.6",
   "pyright>=1.1",
@@ -61,9 +62,9 @@ source-include = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "-q --strict-markers"
+addopts = "-q --strict-markers --benchmark-skip"
 markers = [
-  "benchmark: performance benchmark tests (run with --benchmark-only)",
+  "benchmark: performance benchmarks (run with --benchmark-only)",
   "slow: tests that take more than a second",
 ]
 filterwarnings = [
