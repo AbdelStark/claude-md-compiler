@@ -1,4 +1,21 @@
+<div align="center">
+
 # claude-md-compiler
+
+**Compile `CLAUDE.md` into a versioned policy lockfile and enforce it against file edits, commands, and git diffs.**
+
+[![PyPI](https://img.shields.io/pypi/v/claude-md-compiler.svg?logo=pypi&logoColor=white)](https://pypi.org/project/claude-md-compiler/)
+[![Python](https://img.shields.io/pypi/pyversions/claude-md-compiler.svg?logo=python&logoColor=white)](https://pypi.org/project/claude-md-compiler/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![Built with uv](https://img.shields.io/badge/built%20with-uv-de5fe9?logo=python&logoColor=white)](https://github.com/astral-sh/uv)
+[![Tests: pytest](https://img.shields.io/badge/tests-pytest-0A9EDC?logo=pytest&logoColor=white)](https://docs.pytest.org/)
+[![Status: Alpha](https://img.shields.io/badge/status-alpha-orange.svg)](https://github.com/AbdelStark/claude-md-compiler)
+
+![cldc terminal preview](./docs/assets/img/screenshot-1.png)
+
+</div>
+
+## What It Does
 
 `cldc` is a Python CLI that compiles repository policy from `CLAUDE.md`, `.claude-compiler.yaml`, and `policies/*.yml` into a versioned lockfile, then checks file edits, commands, and git diffs against that policy.
 
