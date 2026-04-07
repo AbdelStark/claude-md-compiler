@@ -1,1 +1,25 @@
-__version__ = "0.1.0"
+from __future__ import annotations
+
+from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
+import tomllib
+
+
+def _read_source_version() -> str:
+    pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    try:
+        project_metadata = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))["project"]
+    except (FileNotFoundError, KeyError, OSError, tomllib.TOMLDecodeError):
+        return "0.0.0"
+
+    source_version = project_metadata.get("version")
+    return source_version if isinstance(source_version, str) else "0.0.0"
+
+
+try:
+    __version__ = version("claude-md-compiler")
+except PackageNotFoundError:
+    __version__ = _read_source_version()
+
+
+__all__ = ["__version__"]
