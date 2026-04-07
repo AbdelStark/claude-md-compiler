@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- New `cldc hook` command — generates and installs hook scripts that
+  bridge the gap between policy enforcement and the actual moments work
+  is finished. `cldc hook generate git-pre-commit` prints a portable
+  POSIX `pre-commit` script that runs `cldc ci --staged` against the
+  compiled lockfile and aborts the commit on blocking violations.
+  `cldc hook generate claude-code` prints a `.claude/settings.json`
+  snippet that wires `cldc check` into the Claude Code agent harness as
+  a `PostToolUse` hook on `Edit|Write|MultiEdit`. `cldc hook install
+  git-pre-commit` writes the script directly into `.git/hooks/pre-commit`,
+  marks it executable, and refuses to clobber an existing hook unless
+  `--force` is passed. Backed by a new `cldc.runtime.hooks` module with
+  `HookArtifact`, `HookInstallReport`, `generate_hook`, and `install_hook`
+  entry points; covered by 17 unit and CLI tests in `tests/test_hooks.py`.
 - New `cldc init` command — scaffolds a repo's `.claude-compiler.yaml`
   from one or more bundled presets (`--preset default --preset strict`,
   repeatable) and writes a stub `CLAUDE.md` if none exists. Never

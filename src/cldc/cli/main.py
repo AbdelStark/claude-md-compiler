@@ -12,6 +12,12 @@ from cldc.presets import list_presets, load_preset, preset_path
 from cldc.runtime.evaluator import check_repo_policy
 from cldc.runtime.events import EMPTY_EXECUTION_INPUTS, load_execution_inputs_file, load_execution_inputs_text
 from cldc.runtime.git import collect_git_write_paths
+from cldc.runtime.hooks import (
+    INSTALLABLE_HOOK_KINDS,
+    SUPPORTED_HOOK_KINDS,
+    generate_hook,
+    install_hook,
+)
 from cldc.runtime.remediation import build_fix_plan, render_fix_plan
 from cldc.runtime.reporting import load_check_report_file, load_check_report_text, render_check_report
 from cldc.scaffold import initialize_repo_policy
@@ -228,6 +234,55 @@ def build_parser() -> argparse.ArgumentParser:
     preset_show_parser.add_argument("name", help="Name of the bundled preset, for example 'default'")
     _add_json_flag(preset_show_parser)
     _add_output_flag(preset_show_parser)
+
+    hook_parser = subparsers.add_parser(
+        "hook",
+        help="Generate or install hook scripts that wire `cldc` into git or Claude Code",
+        description=(
+            "Emit hook artifacts that automatically run `cldc ci`/`cldc check` at the "
+            "moments work is finished. `generate` prints a hook to stdout for review or "
+            "redirection; `install` writes a supported hook into the repo (currently "
+            "only `git-pre-commit`)."
+        ),
+    )
+    hook_subparsers = hook_parser.add_subparsers(dest="hook_command", required=True)
+
+    hook_generate_parser = hook_subparsers.add_parser(
+        "generate",
+        help="Print a hook script to stdout",
+        description="Print a hook artifact to stdout. Use shell redirection to capture it.",
+    )
+    hook_generate_parser.add_argument(
+        "kind",
+        choices=SUPPORTED_HOOK_KINDS,
+        help="Which hook artifact to generate",
+    )
+    _add_json_flag(hook_generate_parser)
+    _add_output_flag(hook_generate_parser)
+
+    hook_install_parser = hook_subparsers.add_parser(
+        "install",
+        help="Write an installable hook into the repo",
+        description=(
+            "Write an installable hook artifact into the repo. Currently the only "
+            "installable kind is `git-pre-commit`, which is written to "
+            "`.git/hooks/pre-commit` and made executable."
+        ),
+    )
+    hook_install_parser.add_argument(
+        "kind",
+        choices=INSTALLABLE_HOOK_KINDS,
+        help="Which hook artifact to install",
+    )
+    hook_install_parser.add_argument("repo", nargs="?", default=".", help="Target repo root (must contain .git)")
+    hook_install_parser.add_argument(
+        "--force",
+        action="store_true",
+        dest="hook_force",
+        help="Overwrite an existing hook script of the same kind",
+    )
+    _add_json_flag(hook_install_parser)
+    _add_output_flag(hook_install_parser)
 
     tui_parser = subparsers.add_parser(
         "tui",
@@ -466,6 +521,25 @@ def _render_preset_show(name: str, json_output: bool) -> str:
     return content.rstrip() + "\n"
 
 
+def _render_hook_generate(artifact, json_output: bool) -> str:
+    if json_output:
+        return json.dumps(artifact.to_dict(), indent=2, sort_keys=True)
+    return artifact.content if artifact.content.endswith("\n") else artifact.content + "\n"
+
+
+def _render_hook_install(report, json_output: bool) -> str:
+    if json_output:
+        return json.dumps(report.to_dict(), indent=2, sort_keys=True)
+    lines = [
+        f"Installed {report.kind} hook ({report.action})",
+        f"Repo root: {report.repo_root}",
+        f"Target: {report.target_path}",
+        f"Executable: {'yes' if report.executable else 'no'}",
+        f"Next action: {report.next_action}",
+    ]
+    return "\n".join(lines)
+
+
 def _load_fix_payload(args) -> dict[str, object]:
     if getattr(args, "report_file", None) and getattr(args, "stdin_report", False):
         raise ValueError("`cldc fix` accepts only one saved report source: choose --report-file or --stdin-report")
@@ -573,6 +647,18 @@ def main(argv: list[str] | None = None) -> int:
             # unreachable via the CLI; keep the explicit error for
             # programmatic callers that bypass argparse.
             parser.error(f"unknown preset subcommand: {args.preset_command}")
+        if args.command == "hook":
+            if args.hook_command == "generate":
+                artifact = generate_hook(args.kind)
+                _output_text(_render_hook_generate(artifact, args.json_output), args.output_path)
+                return 0
+            if args.hook_command == "install":
+                report = install_hook(args.kind, Path(args.repo), force=args.hook_force)
+                _output_text(_render_hook_install(report, args.json_output), args.output_path)
+                return 0
+            # argparse enforces required=True; unreachable from the CLI but
+            # kept as a guard for programmatic callers.
+            parser.error(f"unknown hook subcommand: {args.hook_command}")
         if args.command == "tui":
             from cldc.tui import run_tui
 
