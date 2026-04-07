@@ -7,7 +7,7 @@ import sys
 
 from cldc import __version__
 from cldc.compiler.policy_compiler import compile_repo_policy, doctor_repo_policy
-from cldc.presets import PresetNotFoundError, list_presets, load_preset, preset_path
+from cldc.presets import list_presets, load_preset, preset_path
 from cldc.runtime.evaluator import check_repo_policy
 from cldc.runtime.events import EMPTY_EXECUTION_INPUTS, load_execution_inputs_file, load_execution_inputs_text
 from cldc.runtime.git import collect_git_write_paths
