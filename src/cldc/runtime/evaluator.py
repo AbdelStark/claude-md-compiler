@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from cldc.compiler.policy_compiler import LOCKFILE_FORMAT_VERSION, LOCKFILE_SCHEMA, _compute_source_digest
+from cldc.errors import LockfileError, RepoBoundaryError
 from cldc.ingest.discovery import LOCKFILE_PATH, discover_policy_repo
 from cldc.ingest.source_loader import load_policy_sources
 from cldc.parser.rule_parser import parse_rule_documents
@@ -99,7 +100,7 @@ def _normalize_paths(paths: list[str] | None, *, repo_root: Path) -> list[str]:
         try:
             relative_path = resolved_path.relative_to(resolved_root)
         except ValueError as exc:
-            raise ValueError(
+            raise RepoBoundaryError(
                 f"input path {raw!r} resolves outside the discovered repo root {resolved_root}"
             ) from exc
 
@@ -160,37 +161,37 @@ def _load_lockfile(repo_root: Path) -> dict[str, Any]:
     try:
         payload = json.loads(lockfile.read_text(encoding="utf-8"))
     except JSONDecodeError as exc:
-        raise ValueError(f"compiled lockfile is not valid JSON: {exc}") from exc
+        raise LockfileError(f"compiled lockfile is not valid JSON: {exc}") from exc
 
     if not isinstance(payload, dict):
-        raise ValueError("compiled lockfile must contain a JSON object at the top level")
+        raise LockfileError("compiled lockfile must contain a JSON object at the top level")
 
     if payload.get("$schema") != LOCKFILE_SCHEMA:
-        raise ValueError(
+        raise LockfileError(
             "compiled lockfile schema does not match this checker; re-run `cldc compile` to refresh it"
         )
     if payload.get("format_version") != LOCKFILE_FORMAT_VERSION:
-        raise ValueError(
+        raise LockfileError(
             "compiled lockfile format_version does not match this checker; re-run `cldc compile` to refresh it"
         )
     if payload.get("repo_root") != str(repo_root):
-        raise ValueError(
+        raise LockfileError(
             "compiled lockfile repo_root does not match the discovered repository root; re-run `cldc compile`"
         )
 
     default_mode = payload.get("default_mode")
     if default_mode not in ALLOWED_MODES:
-        raise ValueError(f"compiled lockfile has invalid default_mode: {default_mode!r}")
+        raise LockfileError(f"compiled lockfile has invalid default_mode: {default_mode!r}")
 
     rules = payload.get("rules")
     if not isinstance(rules, list):
-        raise ValueError("compiled lockfile must contain a 'rules' list")
+        raise LockfileError("compiled lockfile must contain a 'rules' list")
 
     rule_count = payload.get("rule_count")
     if not isinstance(rule_count, int):
-        raise ValueError("compiled lockfile must contain an integer 'rule_count'")
+        raise LockfileError("compiled lockfile must contain an integer 'rule_count'")
     if rule_count != len(rules):
-        raise ValueError(
+        raise LockfileError(
             "compiled lockfile rule_count does not match the embedded rules; re-run `cldc compile`"
         )
 
@@ -211,27 +212,27 @@ def _validate_lockfile_freshness(repo_root: Path, payload: dict[str, Any]) -> No
             continue
         repo_local_mtimes.append((repo_root / source.path).stat().st_mtime)
     if repo_local_mtimes and lockfile.stat().st_mtime < max(repo_local_mtimes):
-        raise ValueError(
+        raise LockfileError(
             "compiled lockfile appears stale relative to the current policy sources; re-run `cldc compile`"
         )
 
     if payload["default_mode"] != parsed.default_mode:
-        raise ValueError(
+        raise LockfileError(
             "compiled lockfile default_mode does not match the current policy sources; re-run `cldc compile`"
         )
     if payload["rule_count"] != len(parsed.rules):
-        raise ValueError(
+        raise LockfileError(
             "compiled lockfile rule_count does not match the current policy sources; re-run `cldc compile`"
         )
 
     current_source_digest = _compute_source_digest(bundle)
     lockfile_source_digest = payload.get("source_digest")
     if not isinstance(lockfile_source_digest, str) or len(lockfile_source_digest) != 64:
-        raise ValueError(
+        raise LockfileError(
             "compiled lockfile source_digest is missing or invalid; re-run `cldc compile` to refresh it"
         )
     if lockfile_source_digest != current_source_digest:
-        raise ValueError(
+        raise LockfileError(
             "compiled lockfile source_digest does not match the current policy sources; re-run `cldc compile`"
         )
 
@@ -239,7 +240,7 @@ def _validate_lockfile_freshness(repo_root: Path, payload: dict[str, Any]) -> No
 def _effective_mode(rule: dict[str, Any], default_mode: str) -> str:
     mode = rule.get("mode") or default_mode
     if mode not in ALLOWED_MODES:
-        raise ValueError(f"rule '{rule.get('id', '<unknown>')}' has invalid mode: {mode!r}")
+        raise LockfileError(f"rule '{rule.get('id', '<unknown>')}' has invalid mode: {mode!r}")
     return mode
 
 
@@ -373,7 +374,7 @@ def _evaluate_rule(
 ) -> Violation | None:
     kind = rule.get("kind")
     if kind not in ALLOWED_RULE_KINDS:
-        raise ValueError(f"compiled lockfile contains unsupported rule kind: {kind!r}")
+        raise LockfileError(f"compiled lockfile contains unsupported rule kind: {kind!r}")
 
     if kind == "deny_write":
         matched_paths = _matching_paths(write_paths, rule.get("paths"))
@@ -470,7 +471,7 @@ def check_repo_policy(
     violations: list[Violation] = []
     for rule in payload["rules"]:
         if not isinstance(rule, dict):
-            raise ValueError("compiled lockfile contains a non-object rule entry")
+            raise LockfileError("compiled lockfile contains a non-object rule entry")
         violation = _evaluate_rule(
             rule,
             default_mode=default_mode,

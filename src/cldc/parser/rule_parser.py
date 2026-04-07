@@ -5,6 +5,7 @@ from typing import Any
 
 import yaml
 
+from cldc.errors import RuleValidationError
 from cldc.ingest.source_loader import SourceBundle
 
 ALLOWED_RULE_KINDS = {
@@ -64,7 +65,7 @@ def _optional_str_list(item: dict[str, Any], key: str) -> list[str] | None:
     if value is None:
         return None
     if not isinstance(value, list) or any(not isinstance(v, str) or not v.strip() for v in value):
-        raise ValueError(f"rule field '{key}' must be a list of non-empty strings")
+        raise RuleValidationError(f"rule field '{key}' must be a list of non-empty strings")
     return value
 
 
@@ -72,27 +73,27 @@ def _load_yaml_document(raw: str, context: str) -> dict[str, Any]:
     try:
         document = yaml.safe_load(raw)
     except yaml.YAMLError as exc:
-        raise ValueError(f"invalid yaml in {context}: {exc}") from exc
+        raise RuleValidationError(f"invalid yaml in {context}: {exc}") from exc
     if document is None:
         return {}
     if not isinstance(document, dict):
-        raise ValueError(f"expected a YAML mapping in {context}")
+        raise RuleValidationError(f"expected a YAML mapping in {context}")
     return document
 
 
 def _validate_rule_item(item: dict[str, Any]) -> None:
     if not isinstance(item, dict):
-        raise ValueError("each rule must be an object")
+        raise RuleValidationError("each rule must be an object")
     if not isinstance(item.get("id"), str) or not item["id"].strip():
-        raise ValueError("rule id is required")
+        raise RuleValidationError("rule id is required")
     if not isinstance(item.get("kind"), str) or not item["kind"].strip():
-        raise ValueError(f"rule '{item.get('id', '<unknown>')}' kind is required")
+        raise RuleValidationError(f"rule '{item.get('id', '<unknown>')}' kind is required")
     if item["kind"] not in ALLOWED_RULE_KINDS:
-        raise ValueError(f"unknown rule kind: {item['kind']}")
+        raise RuleValidationError(f"unknown rule kind: {item['kind']}")
     if item.get("mode") is not None and item["mode"] not in ALLOWED_MODES:
-        raise ValueError(f"invalid rule mode: {item['mode']}")
+        raise RuleValidationError(f"invalid rule mode: {item['mode']}")
     if not isinstance(item.get("message"), str) or not item["message"].strip():
-        raise ValueError(f"rule '{item['id']}' message is required")
+        raise RuleValidationError(f"rule '{item['id']}' message is required")
 
     fields = {
         "paths": _optional_str_list(item, "paths"),
@@ -103,14 +104,14 @@ def _validate_rule_item(item: dict[str, Any]) -> None:
     }
     for field_name in REQUIRED_FIELDS_BY_KIND[item["kind"]]:
         if not fields[field_name]:
-            raise ValueError(f"rule '{item['id']}' requires field '{field_name}'")
+            raise RuleValidationError(f"rule '{item['id']}' requires field '{field_name}'")
 
 
 def _coerce_rules(source, raw: str) -> list[RuleDefinition]:
     document = _load_yaml_document(raw, source.path)
     rule_items = document.get("rules", [])
     if not isinstance(rule_items, list):
-        raise ValueError(f"rules must be a list in {source.path}")
+        raise RuleValidationError(f"rules must be a list in {source.path}")
     rules = []
     for item in rule_items:
         _validate_rule_item(item)
@@ -145,11 +146,11 @@ def parse_rule_documents(bundle: SourceBundle) -> ParsedPolicy:
         document = _load_yaml_document(source.content, source.path)
         if source.kind == "compiler_config" and document.get("default_mode") is not None:
             if document["default_mode"] not in ALLOWED_MODES:
-                raise ValueError(f"invalid default_mode: {document['default_mode']}")
+                raise RuleValidationError(f"invalid default_mode: {document['default_mode']}")
             default_mode = document["default_mode"]
         for rule in _coerce_rules(source, source.content):
             if rule.rule_id in seen_ids:
-                raise ValueError(f"duplicate rule id: {rule.rule_id}")
+                raise RuleValidationError(f"duplicate rule id: {rule.rule_id}")
             seen_ids.add(rule.rule_id)
             rules.append(rule)
 

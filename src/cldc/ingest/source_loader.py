@@ -9,8 +9,9 @@ from pathlib import PurePosixPath
 
 import yaml
 
+from cldc.errors import PolicySourceError
 from cldc.ingest.discovery import DEFAULT_POLICY_GLOBS, DiscoveryResult, discover_policy_repo
-from cldc.presets import PRESET_SOURCE_KIND, PresetNotFoundError, load_preset, preset_path
+from cldc.presets import PRESET_SOURCE_KIND, load_preset
 
 SOURCE_PRECEDENCE = ["claude_md", "inline_block", "compiler_config", PRESET_SOURCE_KIND, "policy_file"]
 
@@ -66,11 +67,11 @@ def _load_yaml_document(raw: str, context: str) -> dict[str, Any]:
     try:
         document = yaml.safe_load(raw)
     except yaml.YAMLError as exc:
-        raise ValueError(f"invalid yaml in {context}: {exc}") from exc
+        raise PolicySourceError(f"invalid yaml in {context}: {exc}") from exc
     if document is None:
         return {}
     if not isinstance(document, dict):
-        raise ValueError(f"expected a YAML mapping in {context}")
+        raise PolicySourceError(f"expected a YAML mapping in {context}")
     return document
 
 
@@ -80,15 +81,15 @@ def _load_include_patterns(config_text: str, context: str) -> list[str]:
     if include is None:
         return []
     if not isinstance(include, list):
-        raise ValueError("include must be a list of glob strings")
+        raise PolicySourceError("include must be a list of glob strings")
     patterns: list[str] = []
     for index, item in enumerate(include):
         if not isinstance(item, str) or not item.strip():
-            raise ValueError(f"include[{index}] must be a non-empty glob string")
+            raise PolicySourceError(f"include[{index}] must be a non-empty glob string")
         normalized = item.strip()
         candidate = PurePosixPath(normalized.replace("\\", "/"))
         if candidate.is_absolute() or ".." in candidate.parts:
-            raise ValueError("include patterns must stay within the repo root")
+            raise PolicySourceError("include patterns must stay within the repo root")
         patterns.append(normalized)
     return patterns
 
@@ -99,17 +100,17 @@ def _load_preset_names(config_text: str, context: str) -> list[str]:
     if extends is None:
         return []
     if not isinstance(extends, list):
-        raise ValueError("extends must be a list of preset name strings")
+        raise PolicySourceError("extends must be a list of preset name strings")
     names: list[str] = []
     seen: set[str] = set()
     for index, item in enumerate(extends):
         if not isinstance(item, str) or not item.strip():
-            raise ValueError(f"extends[{index}] must be a non-empty preset name string")
+            raise PolicySourceError(f"extends[{index}] must be a non-empty preset name string")
         cleaned = item.strip()
         if cleaned.startswith("preset:"):
             cleaned = cleaned[len("preset:") :].strip()
             if not cleaned:
-                raise ValueError(f"extends[{index}] is missing a preset name after 'preset:' prefix")
+                raise PolicySourceError(f"extends[{index}] is missing a preset name after 'preset:' prefix")
         if cleaned in seen:
             continue
         seen.add(cleaned)
@@ -120,11 +121,7 @@ def _load_preset_names(config_text: str, context: str) -> list[str]:
 def _load_preset_sources(preset_names: list[str]) -> list[PolicySource]:
     sources: list[PolicySource] = []
     for name in preset_names:
-        try:
-            content = load_preset(name)
-            resolved_path = preset_path(name)
-        except PresetNotFoundError as exc:
-            raise ValueError(str(exc)) from exc
+        content = load_preset(name)
         sources.append(
             PolicySource(
                 kind=PRESET_SOURCE_KIND,
