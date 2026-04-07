@@ -35,9 +35,7 @@ _SAFE_PATH_CHARS = st.characters(
 )
 _safe_path_segment = st.text(alphabet=_SAFE_PATH_CHARS, min_size=1, max_size=12)
 _safe_relative_path = (
-    st.lists(_safe_path_segment, min_size=1, max_size=5)
-    .map("/".join)
-    .filter(lambda s: ".." not in s and not s.startswith("/"))
+    st.lists(_safe_path_segment, min_size=1, max_size=5).map("/".join).filter(lambda s: ".." not in s and not s.startswith("/"))
 )
 # Identifier-shaped tokens used for command and claim names.
 _lower_token = st.text(
@@ -45,9 +43,7 @@ _lower_token = st.text(
     min_size=1,
     max_size=8,
 )
-_function_fixture_settings = settings(
-    suppress_health_check=[HealthCheck.function_scoped_fixture]
-)
+_function_fixture_settings = settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
 # Canonical execution-input payload shape used by both check and loader tests.
 _evidence_payload = st.fixed_dictionaries(
     {
@@ -118,9 +114,7 @@ class TestNormalizePathsProperties:
             assert not entry.startswith("/"), f"unexpected leading slash in {entry!r}"
             assert not entry.endswith("/"), f"unexpected trailing slash in {entry!r}"
             assert "//" not in entry, f"unexpected duplicate slash in {entry!r}"
-            assert "../" not in entry and not entry.endswith("/.."), (
-                f"unexpected parent traversal in {entry!r}"
-            )
+            assert "../" not in entry and not entry.endswith("/.."), f"unexpected parent traversal in {entry!r}"
             assert entry != ".", "current-directory entries should be filtered"
 
     @_function_fixture_settings

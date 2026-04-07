@@ -171,9 +171,7 @@ def load_policy_sources(repo_root: Path | str) -> SourceBundle:
                 if rel in seen_policy_paths:
                     continue
                 seen_policy_paths.add(rel)
-                sources.append(
-                    PolicySource(kind="policy_file", path=rel, content=policy_path.read_text(encoding="utf-8"))
-                )
+                sources.append(PolicySource(kind="policy_file", path=rel, content=policy_path.read_text(encoding="utf-8")))
 
     logger.debug("loaded %d sources from %s", len(sources), root)
     return SourceBundle(repo_root=str(root), sources=sources, discovery=discovery)

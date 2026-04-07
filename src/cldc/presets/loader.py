@@ -68,9 +68,7 @@ def preset_path(name: str) -> Path:
     candidate = _packs_dir() / f"{cleaned}{_PRESET_SUFFIX}"
     if not candidate.is_file():
         available = ", ".join(preset.name for preset in list_presets()) or "<none>"
-        raise PresetNotFoundError(
-            f"preset {cleaned!r} is not bundled with this cldc version; available: {available}"
-        )
+        raise PresetNotFoundError(f"preset {cleaned!r} is not bundled with this cldc version; available: {available}")
     logger.debug("loading preset %s from %s", cleaned, candidate)
     return candidate
 

@@ -71,7 +71,6 @@ def _compute_source_digest(bundle) -> str:
     return hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
 
 
-
 def _build_lock_payload(repo_root: Path, bundle, parsed) -> dict[str, Any]:
     source_digest = _compute_source_digest(bundle)
     return {
@@ -94,7 +93,9 @@ def _compiled_discovery(discovery: dict[str, Any]) -> dict[str, Any]:
     compiled_discovery = dict(discovery)
     compiled_discovery["lockfile_path"] = ".claude/policy.lock.json"
     compiled_discovery["warnings"] = [
-        warning for warning in compiled_discovery.get("warnings", []) if warning != "compiled lockfile not found at .claude/policy.lock.json"
+        warning
+        for warning in compiled_discovery.get("warnings", [])
+        if warning != "compiled lockfile not found at .claude/policy.lock.json"
     ]
     return compiled_discovery
 
@@ -166,21 +167,15 @@ def _validate_existing_lockfile(
     lockfile_source_digest = payload.get("source_digest")
 
     if lockfile_schema != LOCKFILE_SCHEMA:
-        warnings.append(
-            "lockfile schema does not match compiler expectation; re-run `cldc compile` to refresh it"
-        )
+        warnings.append("lockfile schema does not match compiler expectation; re-run `cldc compile` to refresh it")
     if lockfile_format_version != LOCKFILE_FORMAT_VERSION:
-        warnings.append(
-            "lockfile format_version does not match compiler expectation; re-run `cldc compile` to refresh it"
-        )
+        warnings.append("lockfile format_version does not match compiler expectation; re-run `cldc compile` to refresh it")
     if payload.get("repo_root") != str(repo_root):
         warnings.append("lockfile repo_root does not match the discovered repository root")
     if payload.get("rule_count") != expected_rule_count:
         warnings.append("lockfile rule_count does not match the currently parsed policy sources")
     if not isinstance(lockfile_source_digest, str) or len(lockfile_source_digest) != 64:
-        warnings.append(
-            "lockfile source_digest is missing or invalid; re-run `cldc compile` to refresh it"
-        )
+        warnings.append("lockfile source_digest is missing or invalid; re-run `cldc compile` to refresh it")
     elif lockfile_source_digest != expected_source_digest:
         warnings.append("lockfile source_digest does not match the current policy sources")
 
@@ -285,11 +280,7 @@ def doctor_repo_policy(repo_root: Path | str) -> DoctorReport:
         # repo — their content is covered by the source_digest check, so
         # they are skipped here to avoid FileNotFoundError on `preset:*`
         # paths.
-        repo_local_mtimes = [
-            (root / source.path).stat().st_mtime
-            for source in bundle.sources
-            if not source.path.startswith("preset:")
-        ]
+        repo_local_mtimes = [(root / source.path).stat().st_mtime for source in bundle.sources if not source.path.startswith("preset:")]
         if repo_local_mtimes and lockfile.stat().st_mtime < max(repo_local_mtimes):
             warnings.append("lockfile appears stale relative to policy sources")
 

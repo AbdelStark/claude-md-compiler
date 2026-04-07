@@ -64,13 +64,20 @@ def _parse_event(event: Any, *, index: int) -> ExecutionInputs:
 
     context = f"events[{index}] kind {kind!r}"
     if kind == "read":
-        return ExecutionInputs(read_paths=[_require_string(event.get("path"), field="path", context=context)], write_paths=[], commands=[], claims=[])
+        return ExecutionInputs(
+            read_paths=[_require_string(event.get("path"), field="path", context=context)], write_paths=[], commands=[], claims=[]
+        )
     if kind == "write":
-        return ExecutionInputs(read_paths=[], write_paths=[_require_string(event.get("path"), field="path", context=context)], commands=[], claims=[])
+        return ExecutionInputs(
+            read_paths=[], write_paths=[_require_string(event.get("path"), field="path", context=context)], commands=[], claims=[]
+        )
     if kind == "command":
-        return ExecutionInputs(read_paths=[], write_paths=[], commands=[_require_string(event.get("command"), field="command", context=context)], claims=[])
-    return ExecutionInputs(read_paths=[], write_paths=[], commands=[], claims=[_require_string(event.get("claim"), field="claim", context=context)])
-
+        return ExecutionInputs(
+            read_paths=[], write_paths=[], commands=[_require_string(event.get("command"), field="command", context=context)], claims=[]
+        )
+    return ExecutionInputs(
+        read_paths=[], write_paths=[], commands=[], claims=[_require_string(event.get("claim"), field="claim", context=context)]
+    )
 
 
 def load_execution_inputs(payload: Any) -> ExecutionInputs:
@@ -98,7 +105,6 @@ def load_execution_inputs(payload: Any) -> ExecutionInputs:
     return merged
 
 
-
 def load_execution_inputs_file(path: Path | str) -> ExecutionInputs:
     """Load execution-input JSON from disk and validate its shape."""
 
@@ -110,7 +116,6 @@ def load_execution_inputs_file(path: Path | str) -> ExecutionInputs:
     except json.JSONDecodeError as exc:
         raise EvidenceError(f"execution input payload file is not valid JSON: {exc}") from exc
     return load_execution_inputs(payload)
-
 
 
 def load_execution_inputs_text(text: str, *, source: str = "stdin") -> ExecutionInputs:

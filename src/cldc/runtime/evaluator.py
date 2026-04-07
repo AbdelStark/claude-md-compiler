@@ -103,9 +103,7 @@ def _normalize_paths(paths: list[str] | None, *, repo_root: Path) -> list[str]:
         try:
             relative_path = resolved_path.relative_to(resolved_root)
         except ValueError as exc:
-            raise RepoBoundaryError(
-                f"input path {raw!r} resolves outside the discovered repo root {resolved_root}"
-            ) from exc
+            raise RepoBoundaryError(f"input path {raw!r} resolves outside the discovered repo root {resolved_root}") from exc
 
         normalized_path = relative_path.as_posix()
         if normalized_path == ".":
@@ -149,17 +147,13 @@ def _matching_coupled_paths(
     if not required_patterns:
         return []
     triggered_path_set = set(triggered_paths)
-    return [
-        path for path in write_paths if path not in triggered_path_set and _matches_any(path, required_patterns)
-    ]
+    return [path for path in write_paths if path not in triggered_path_set and _matches_any(path, required_patterns)]
 
 
 def _load_lockfile(repo_root: Path) -> dict[str, Any]:
     lockfile = repo_root / LOCKFILE_PATH
     if not lockfile.exists():
-        raise FileNotFoundError(
-            f"compiled lockfile not found at {LOCKFILE_PATH}; run `cldc compile` before `cldc check`"
-        )
+        raise FileNotFoundError(f"compiled lockfile not found at {LOCKFILE_PATH}; run `cldc compile` before `cldc check`")
 
     try:
         payload = json.loads(lockfile.read_text(encoding="utf-8"))
@@ -170,17 +164,11 @@ def _load_lockfile(repo_root: Path) -> dict[str, Any]:
         raise LockfileError("compiled lockfile must contain a JSON object at the top level")
 
     if payload.get("$schema") != LOCKFILE_SCHEMA:
-        raise LockfileError(
-            "compiled lockfile schema does not match this checker; re-run `cldc compile` to refresh it"
-        )
+        raise LockfileError("compiled lockfile schema does not match this checker; re-run `cldc compile` to refresh it")
     if payload.get("format_version") != LOCKFILE_FORMAT_VERSION:
-        raise LockfileError(
-            "compiled lockfile format_version does not match this checker; re-run `cldc compile` to refresh it"
-        )
+        raise LockfileError("compiled lockfile format_version does not match this checker; re-run `cldc compile` to refresh it")
     if payload.get("repo_root") != str(repo_root):
-        raise LockfileError(
-            "compiled lockfile repo_root does not match the discovered repository root; re-run `cldc compile`"
-        )
+        raise LockfileError("compiled lockfile repo_root does not match the discovered repository root; re-run `cldc compile`")
 
     default_mode = payload.get("default_mode")
     if default_mode not in ALLOWED_MODES:
@@ -194,9 +182,7 @@ def _load_lockfile(repo_root: Path) -> dict[str, Any]:
     if not isinstance(rule_count, int):
         raise LockfileError("compiled lockfile must contain an integer 'rule_count'")
     if rule_count != len(rules):
-        raise LockfileError(
-            "compiled lockfile rule_count does not match the embedded rules; re-run `cldc compile`"
-        )
+        raise LockfileError("compiled lockfile rule_count does not match the embedded rules; re-run `cldc compile`")
 
     logger.debug("loaded lockfile with %d rules from %s", len(rules), lockfile)
     return payload
@@ -216,29 +202,19 @@ def _validate_lockfile_freshness(repo_root: Path, payload: dict[str, Any]) -> No
             continue
         repo_local_mtimes.append((repo_root / source.path).stat().st_mtime)
     if repo_local_mtimes and lockfile.stat().st_mtime < max(repo_local_mtimes):
-        raise LockfileError(
-            "compiled lockfile appears stale relative to the current policy sources; re-run `cldc compile`"
-        )
+        raise LockfileError("compiled lockfile appears stale relative to the current policy sources; re-run `cldc compile`")
 
     if payload["default_mode"] != parsed.default_mode:
-        raise LockfileError(
-            "compiled lockfile default_mode does not match the current policy sources; re-run `cldc compile`"
-        )
+        raise LockfileError("compiled lockfile default_mode does not match the current policy sources; re-run `cldc compile`")
     if payload["rule_count"] != len(parsed.rules):
-        raise LockfileError(
-            "compiled lockfile rule_count does not match the current policy sources; re-run `cldc compile`"
-        )
+        raise LockfileError("compiled lockfile rule_count does not match the current policy sources; re-run `cldc compile`")
 
     current_source_digest = _compute_source_digest(bundle)
     lockfile_source_digest = payload.get("source_digest")
     if not isinstance(lockfile_source_digest, str) or len(lockfile_source_digest) != 64:
-        raise LockfileError(
-            "compiled lockfile source_digest is missing or invalid; re-run `cldc compile` to refresh it"
-        )
+        raise LockfileError("compiled lockfile source_digest is missing or invalid; re-run `cldc compile` to refresh it")
     if lockfile_source_digest != current_source_digest:
-        raise LockfileError(
-            "compiled lockfile source_digest does not match the current policy sources; re-run `cldc compile`"
-        )
+        raise LockfileError("compiled lockfile source_digest does not match the current policy sources; re-run `cldc compile`")
 
 
 def _effective_mode(rule: dict[str, Any], default_mode: str) -> str:
@@ -353,10 +329,7 @@ def _summarize_report(*, decision: str, violation_count: int, blocking_violation
     if violation_count == 0:
         return "Policy check passed with no violations."
     if decision == "block":
-        return (
-            f"Policy check found {violation_count} violation(s), including "
-            f"{blocking_violation_count} blocking violation(s)."
-        )
+        return f"Policy check found {violation_count} violation(s), including {blocking_violation_count} blocking violation(s)."
     return f"Policy check found {violation_count} non-blocking violation(s)."
 
 

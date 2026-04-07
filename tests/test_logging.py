@@ -60,9 +60,7 @@ def test_verbose_flag_emits_debug_records(tmp_path, caplog):
         configure_cli_logging(verbose=False, quiet=False)
         logging.getLogger("cldc").setLevel(logging.WARNING)
 
-    debug_records = [
-        record for record in caplog.records if record.name.startswith("cldc") and record.levelno == logging.DEBUG
-    ]
+    debug_records = [record for record in caplog.records if record.name.startswith("cldc") and record.levelno == logging.DEBUG]
     assert debug_records, "expected at least one DEBUG record under the cldc.* hierarchy"
 
 
@@ -84,9 +82,7 @@ def test_cli_verbose_flag_produces_debug_output(tmp_path):
     )
 
     assert result.returncode == 0, result.stderr
-    assert "DEBUG cldc." in result.stderr, (
-        "expected DEBUG records on stderr in verbose mode, got stderr:\n" + result.stderr
-    )
+    assert "DEBUG cldc." in result.stderr, "expected DEBUG records on stderr in verbose mode, got stderr:\n" + result.stderr
 
 
 def test_cli_verbose_and_quiet_are_mutually_exclusive(tmp_path):

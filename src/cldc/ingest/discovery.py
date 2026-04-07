@@ -49,9 +49,7 @@ def discover_policy_repo(start_path: Path | str) -> DiscoveryResult:
 
     for candidate in [cursor, *cursor.parents]:
         claude_file = candidate / "CLAUDE.md"
-        config_candidates = [
-            name for name in CONFIG_CANDIDATES if (candidate / name).is_file()
-        ]
+        config_candidates = [name for name in CONFIG_CANDIDATES if (candidate / name).is_file()]
         policy_paths = _list_default_policy_paths(candidate)
         lockfile_file = candidate / LOCKFILE_PATH
         has_markers = claude_file.is_file() or bool(config_candidates) or bool(policy_paths)
@@ -60,9 +58,7 @@ def discover_policy_repo(start_path: Path | str) -> DiscoveryResult:
 
         warnings: list[str] = []
         if len(config_candidates) > 1:
-            warnings.append(
-                "multiple compiler config files found; using .claude-compiler.yaml precedence"
-            )
+            warnings.append("multiple compiler config files found; using .claude-compiler.yaml precedence")
         if not claude_file.is_file():
             warnings.append("CLAUDE.md not found; compiling config and policy fragments only")
         if not policy_paths:
@@ -92,7 +88,5 @@ def discover_policy_repo(start_path: Path | str) -> DiscoveryResult:
         config_candidates=[],
         policy_paths=[],
         lockfile_path=None,
-        warnings=[
-            "no CLAUDE.md, compiler config, or policy fragments found while searching parent directories"
-        ],
+        warnings=["no CLAUDE.md, compiler config, or policy fragments found while searching parent directories"],
     )

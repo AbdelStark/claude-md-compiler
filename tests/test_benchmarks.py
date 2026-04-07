@@ -24,12 +24,12 @@ from cldc.runtime.evaluator import (
 
 pytestmark = pytest.mark.benchmark
 
-FIXTURE_REPO_A = Path(__file__).parent / 'fixtures' / 'repo_a'
+FIXTURE_REPO_A = Path(__file__).parent / "fixtures" / "repo_a"
 
 
 def _copy_fixture_repo(source_root: Path, destination_root: Path) -> None:
     """Recursively copy a fixture repo into a writable destination."""
-    for source in source_root.rglob('*'):
+    for source in source_root.rglob("*"):
         if not source.is_file():
             continue
         destination = destination_root / source.relative_to(source_root)
@@ -51,7 +51,7 @@ def large_rule_repo(tmp_path):
         for i in range(50)
     ]
     rules_yaml = "rules:\n" + "".join(rule_blocks)
-    (tmp_path / 'CLAUDE.md').write_text(
+    (tmp_path / "CLAUDE.md").write_text(
         "```cldc\n" + rules_yaml + "```\n",
         encoding="utf-8",
     )
@@ -68,7 +68,7 @@ def fixture_repo(tmp_path):
 
 
 def test_compile_fixture_repo_benchmark(benchmark, tmp_path):
-    target = tmp_path / 'repo'
+    target = tmp_path / "repo"
     target.mkdir()
     _copy_fixture_repo(FIXTURE_REPO_A, target)
     result = benchmark(compile_repo_policy, target)
@@ -79,38 +79,40 @@ def test_check_fixture_repo_benchmark(benchmark, fixture_repo):
     def run():
         return check_repo_policy(
             fixture_repo,
-            read_paths=['docs/rfcs/CLDC-0006-validator-engine.md'],
-            write_paths=['src/main.py'],
-            commands=['pytest -q'],
+            read_paths=["docs/rfcs/CLDC-0006-validator-engine.md"],
+            write_paths=["src/main.py"],
+            commands=["pytest -q"],
         )
+
     report = benchmark(run)
-    assert report.decision in {'pass', 'warn', 'block'}
+    assert report.decision in {"pass", "warn", "block"}
 
 
 def test_check_against_50_rule_repo_benchmark(benchmark, large_rule_repo):
     def run():
         return check_repo_policy(
             large_rule_repo,
-            write_paths=['generated-7/output.json', 'src/app.py', 'tests/test_app.py'],
+            write_paths=["generated-7/output.json", "src/app.py", "tests/test_app.py"],
         )
+
     report = benchmark(run)
-    assert report.decision == 'block'
+    assert report.decision == "block"
 
 
 def test_normalize_paths_1000_paths_benchmark(benchmark, tmp_path):
-    paths = [f'src/module_{i}/file_{i}.py' for i in range(1000)]
+    paths = [f"src/module_{i}/file_{i}.py" for i in range(1000)]
     result = benchmark(_normalize_paths, paths, repo_root=tmp_path)
     assert len(result) == 1000
 
 
 def test_matches_any_50_patterns_benchmark(benchmark):
-    patterns = [f'generated-{i}/**' for i in range(50)] + [f'**/*.gen.{i}.json' for i in range(50)]
-    result = benchmark(_matches_any, 'generated-42/output.bin', patterns)
+    patterns = [f"generated-{i}/**" for i in range(50)] + [f"**/*.gen.{i}.json" for i in range(50)]
+    result = benchmark(_matches_any, "generated-42/output.bin", patterns)
     assert result is True
 
 
 def test_matching_commands_benchmark(benchmark):
-    commands = [f'cmd-{i}' for i in range(200)]
-    expected = [f'cmd-{i}' for i in range(0, 200, 10)]
+    commands = [f"cmd-{i}" for i in range(200)]
+    expected = [f"cmd-{i}" for i in range(0, 200, 10)]
     result = benchmark(_matching_commands, commands, expected)
     assert len(result) == 20

@@ -20,7 +20,6 @@ def _add_json_flag(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--json", action="store_true", dest="json_output", help="Emit machine-readable JSON output")
 
 
-
 def _add_output_flag(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--output",
@@ -29,20 +28,45 @@ def _add_output_flag(parser: argparse.ArgumentParser) -> None:
     )
 
 
-
 def _add_runtime_input_flags(parser: argparse.ArgumentParser, *, include_write: bool) -> None:
-    parser.add_argument("--read", action="append", default=[], dest="read_paths", help="Path read before editing; repeat for multiple paths")
+    parser.add_argument(
+        "--read", action="append", default=[], dest="read_paths", help="Path read before editing; repeat for multiple paths"
+    )
     if include_write:
-        parser.add_argument("--write", action="append", default=[], dest="write_paths", help="Path written or otherwise touched; repeat for multiple paths")
-    parser.add_argument("--command", action="append", default=[], dest="commands", help="Executed command string; repeat for multiple commands")
-    parser.add_argument("--claim", action="append", default=[], dest="claims", help="Asserted policy claim (for example 'qa-reviewed'); repeat for multiple claims")
-    parser.add_argument("--events-file", dest="events_file", help="Load execution input JSON from a file and merge it with explicit runtime flags")
-    parser.add_argument("--stdin-json", action="store_true", dest="stdin_json", help="Load execution input JSON from stdin and merge it with explicit runtime flags")
+        parser.add_argument(
+            "--write", action="append", default=[], dest="write_paths", help="Path written or otherwise touched; repeat for multiple paths"
+        )
+    parser.add_argument(
+        "--command", action="append", default=[], dest="commands", help="Executed command string; repeat for multiple commands"
+    )
+    parser.add_argument(
+        "--claim",
+        action="append",
+        default=[],
+        dest="claims",
+        help="Asserted policy claim (for example 'qa-reviewed'); repeat for multiple claims",
+    )
+    parser.add_argument(
+        "--events-file", dest="events_file", help="Load execution input JSON from a file and merge it with explicit runtime flags"
+    )
+    parser.add_argument(
+        "--stdin-json",
+        action="store_true",
+        dest="stdin_json",
+        help="Load execution input JSON from stdin and merge it with explicit runtime flags",
+    )
 
 
 def _add_report_input_flags(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--report-file", dest="report_file", help="Load an existing JSON policy report and render it without re-running evaluation")
-    parser.add_argument("--stdin-report", action="store_true", dest="stdin_report", help="Load an existing JSON policy report from stdin and render it without re-running evaluation")
+    parser.add_argument(
+        "--report-file", dest="report_file", help="Load an existing JSON policy report and render it without re-running evaluation"
+    )
+    parser.add_argument(
+        "--stdin-report",
+        action="store_true",
+        dest="stdin_report",
+        help="Load an existing JSON policy report from stdin and render it without re-running evaluation",
+    )
     parser.add_argument(
         "--format",
         choices=("text", "markdown"),
@@ -64,18 +88,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--verbose",
         "-v",
         action="store_true",
-        help=(
-            "Emit debug-level diagnostics to stderr. Place before the subcommand "
-            "(for example `cldc --verbose compile .`)."
-        ),
+        help=("Emit debug-level diagnostics to stderr. Place before the subcommand (for example `cldc --verbose compile .`)."),
     )
     verbosity.add_argument(
         "--quiet",
         "-q",
         action="store_true",
         help=(
-            "Suppress warnings and info output, leaving only errors. Place before "
-            "the subcommand (for example `cldc --quiet compile .`)."
+            "Suppress warnings and info output, leaving only errors. Place before the subcommand (for example `cldc --quiet compile .`)."
         ),
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -175,10 +195,7 @@ def build_parser() -> argparse.ArgumentParser:
     preset_show_parser = preset_subparsers.add_parser(
         "show",
         help="Print the YAML contents of one bundled preset",
-        description=(
-            "Print the raw YAML contents of one bundled preset so it can be reviewed, copied, "
-            "or piped into other tools."
-        ),
+        description=("Print the raw YAML contents of one bundled preset so it can be reviewed, copied, or piped into other tools."),
     )
     preset_show_parser.add_argument("name", help="Name of the bundled preset, for example 'default'")
     _add_json_flag(preset_show_parser)
@@ -186,14 +203,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     return parser
 
+
 def _output_text(text: str, output_path: str | None = None) -> None:
     print(text)
     if output_path:
         target = Path(output_path)
         target.parent.mkdir(parents=True, exist_ok=True)
-        normalized_text = text if text.endswith('\n') else f"{text}\n"
+        normalized_text = text if text.endswith("\n") else f"{text}\n"
         target.write_text(normalized_text, encoding="utf-8")
-
 
 
 def _render_compile_result(compiled, json_output: bool) -> str:
@@ -212,7 +229,6 @@ def _render_compile_result(compiled, json_output: bool) -> str:
         lines.append("Discovery warnings:")
         lines.extend(f"- {warning}" for warning in compiled.warnings)
     return "\n".join(lines)
-
 
 
 def _render_doctor_result(report, json_output: bool) -> str:
@@ -249,13 +265,11 @@ def _render_doctor_result(report, json_output: bool) -> str:
     return "\n".join(lines)
 
 
-
 def _check_payload(report, git_metadata: dict[str, object] | None = None) -> dict[str, object]:
     payload = report.to_dict()
     if git_metadata is not None:
-        payload['git'] = git_metadata
+        payload["git"] = git_metadata
     return payload
-
 
 
 def _render_check_result(report, json_output: bool, *, git_metadata: dict[str, object] | None = None) -> str:
@@ -264,7 +278,7 @@ def _render_check_result(report, json_output: bool, *, git_metadata: dict[str, o
 
     lines: list[str] = []
     if git_metadata is not None:
-        if git_metadata.get('mode') == 'staged':
+        if git_metadata.get("mode") == "staged":
             lines.append(f"Git input: staged diff ({git_metadata.get('write_path_count', 0)} changed paths)")
         else:
             lines.append(
@@ -301,53 +315,50 @@ def _render_check_result(report, json_output: bool, *, git_metadata: dict[str, o
     return "\n".join(lines)
 
 
-
 def _load_cli_event_payload(args) -> dict[str, list[str]] | None:
     merged = EMPTY_EXECUTION_INPUTS
 
-    if getattr(args, 'events_file', None):
+    if getattr(args, "events_file", None):
         merged = merged.merged_with(load_execution_inputs_file(args.events_file))
-    if getattr(args, 'stdin_json', False):
-        merged = merged.merged_with(load_execution_inputs_text(sys.stdin.read(), source='stdin'))
+    if getattr(args, "stdin_json", False):
+        merged = merged.merged_with(load_execution_inputs_text(sys.stdin.read(), source="stdin"))
 
     if merged == EMPTY_EXECUTION_INPUTS:
         return None
     return {
-        'read_paths': merged.read_paths,
-        'write_paths': merged.write_paths,
-        'commands': merged.commands,
-        'claims': merged.claims,
+        "read_paths": merged.read_paths,
+        "write_paths": merged.write_paths,
+        "commands": merged.commands,
+        "claims": merged.claims,
     }
-
 
 
 def _has_runtime_inputs(args) -> bool:
     return bool(
-        getattr(args, 'read_paths', None)
-        or getattr(args, 'write_paths', None)
-        or getattr(args, 'commands', None)
-        or getattr(args, 'claims', None)
-        or getattr(args, 'events_file', None)
-        or getattr(args, 'stdin_json', False)
+        getattr(args, "read_paths", None)
+        or getattr(args, "write_paths", None)
+        or getattr(args, "commands", None)
+        or getattr(args, "claims", None)
+        or getattr(args, "events_file", None)
+        or getattr(args, "stdin_json", False)
     )
 
 
-
 def _load_explain_payload(args) -> dict[str, object]:
-    if getattr(args, 'report_file', None) and getattr(args, 'stdin_report', False):
+    if getattr(args, "report_file", None) and getattr(args, "stdin_report", False):
         raise ValueError("`cldc explain` accepts only one saved report source: choose --report-file or --stdin-report")
-    if getattr(args, 'stdin_json', False) and getattr(args, 'stdin_report', False):
+    if getattr(args, "stdin_json", False) and getattr(args, "stdin_report", False):
         raise ValueError("`cldc explain` cannot consume both --stdin-json and --stdin-report from stdin in the same run")
 
-    if getattr(args, 'report_file', None) or getattr(args, 'stdin_report', False):
+    if getattr(args, "report_file", None) or getattr(args, "stdin_report", False):
         if _has_runtime_inputs(args):
             raise ValueError(
                 "`cldc explain` cannot combine saved report input with fresh runtime evidence; "
                 "use either --report-file/--stdin-report or the runtime evidence flags"
             )
-        if getattr(args, 'report_file', None):
+        if getattr(args, "report_file", None):
             return load_check_report_file(args.report_file)
-        return load_check_report_text(sys.stdin.read(), source='stdin')
+        return load_check_report_text(sys.stdin.read(), source="stdin")
 
     report = check_repo_policy(
         Path(args.repo),
@@ -358,7 +369,6 @@ def _load_explain_payload(args) -> dict[str, object]:
         event_payload=_load_cli_event_payload(args),
     )
     return _check_payload(report)
-
 
 
 def _render_preset_list(json_output: bool) -> str:
@@ -396,21 +406,21 @@ def _render_preset_show(name: str, json_output: bool) -> str:
 
 
 def _load_fix_payload(args) -> dict[str, object]:
-    if getattr(args, 'report_file', None) and getattr(args, 'stdin_report', False):
+    if getattr(args, "report_file", None) and getattr(args, "stdin_report", False):
         raise ValueError("`cldc fix` accepts only one saved report source: choose --report-file or --stdin-report")
-    if getattr(args, 'stdin_json', False) and getattr(args, 'stdin_report', False):
+    if getattr(args, "stdin_json", False) and getattr(args, "stdin_report", False):
         raise ValueError("`cldc fix` cannot consume both --stdin-json and --stdin-report from stdin in the same run")
 
-    if getattr(args, 'report_file', None) or getattr(args, 'stdin_report', False):
+    if getattr(args, "report_file", None) or getattr(args, "stdin_report", False):
         if _has_runtime_inputs(args):
             raise ValueError(
                 "`cldc fix` cannot combine saved report input with fresh runtime evidence; "
                 "use either --report-file/--stdin-report or the runtime evidence flags"
             )
-        if getattr(args, 'report_file', None):
+        if getattr(args, "report_file", None):
             report_payload = load_check_report_file(args.report_file)
         else:
-            report_payload = load_check_report_text(sys.stdin.read(), source='stdin')
+            report_payload = load_check_report_text(sys.stdin.read(), source="stdin")
     else:
         report = check_repo_policy(
             Path(args.repo),
@@ -423,7 +433,6 @@ def _load_fix_payload(args) -> dict[str, object]:
         report_payload = _check_payload(report)
 
     return build_fix_plan(report_payload)
-
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -480,11 +489,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "fix":
             payload = _load_fix_payload(args)
-            rendered = (
-                json.dumps(payload, indent=2, sort_keys=True)
-                if args.json_output
-                else render_fix_plan(payload, format=args.format)
-            )
+            rendered = json.dumps(payload, indent=2, sort_keys=True) if args.json_output else render_fix_plan(payload, format=args.format)
             _output_text(rendered, args.output_path)
             return 0
         if args.command == "preset":

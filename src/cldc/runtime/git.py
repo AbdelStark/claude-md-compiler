@@ -35,7 +35,7 @@ def collect_git_write_paths(
         raise FileNotFoundError(discovery.warnings[0])
 
     root = Path(discovery.repo_root)
-    _run_git(['git', 'rev-parse', '--is-inside-work-tree'], cwd=root)
+    _run_git(["git", "rev-parse", "--is-inside-work-tree"], cwd=root)
 
     if staged and base:
         raise ValueError("cldc ci accepts either --staged or --base/--head, not both")
@@ -45,24 +45,24 @@ def collect_git_write_paths(
         raise ValueError("cldc ci cannot use --head without --base")
 
     if staged:
-        command = ['git', 'diff', '--cached', '--name-only']
-        mode = 'staged'
+        command = ["git", "diff", "--cached", "--name-only"]
+        mode = "staged"
         metadata: dict[str, Any] = {
-            'mode': mode,
-            'git_command': command,
+            "mode": mode,
+            "git_command": command,
         }
     else:
-        resolved_head = head or 'HEAD'
-        command = ['git', 'diff', '--name-only', f'{base}...{resolved_head}']
-        mode = 'range'
+        resolved_head = head or "HEAD"
+        command = ["git", "diff", "--name-only", f"{base}...{resolved_head}"]
+        mode = "range"
         metadata = {
-            'mode': mode,
-            'base': base,
-            'head': resolved_head,
-            'git_command': command,
+            "mode": mode,
+            "base": base,
+            "head": resolved_head,
+            "git_command": command,
         }
 
     result = _run_git(command, cwd=root)
-    write_paths = [line.strip().replace('\\', '/') for line in result.stdout.splitlines() if line.strip()]
-    metadata['write_path_count'] = len(write_paths)
+    write_paths = [line.strip().replace("\\", "/") for line in result.stdout.splitlines() if line.strip()]
+    metadata["write_path_count"] = len(write_paths)
     return write_paths, metadata

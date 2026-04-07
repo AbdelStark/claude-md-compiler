@@ -41,42 +41,36 @@ def test_cldc_error_subclasses_value_error():
 
 
 def test_policy_source_error_for_malformed_extends(tmp_path):
-    (tmp_path / 'CLAUDE.md').write_text('# repo\n', encoding='utf-8')
-    (tmp_path / '.claude-compiler.yaml').write_text(
+    (tmp_path / "CLAUDE.md").write_text("# repo\n", encoding="utf-8")
+    (tmp_path / ".claude-compiler.yaml").write_text(
         "default_mode: warn\nextends: not-a-list\n",
-        encoding='utf-8',
+        encoding="utf-8",
     )
 
-    with pytest.raises(PolicySourceError, match='extends must be a list'):
+    with pytest.raises(PolicySourceError, match="extends must be a list"):
         load_policy_sources(tmp_path)
 
 
 def test_rule_validation_error_for_duplicate_rule_ids(tmp_path):
-    (tmp_path / 'CLAUDE.md').write_text(
+    (tmp_path / "CLAUDE.md").write_text(
         "```cldc\nrules:\n  - id: dup\n    kind: deny_write\n    paths: ['a/**']\n    message: first\n```\n",
-        encoding='utf-8',
+        encoding="utf-8",
     )
-    (tmp_path / '.claude-compiler.yaml').write_text(
+    (tmp_path / ".claude-compiler.yaml").write_text(
         "rules:\n  - id: dup\n    kind: deny_write\n    paths: ['b/**']\n    message: second\n",
-        encoding='utf-8',
+        encoding="utf-8",
     )
 
     bundle = load_policy_sources(tmp_path)
 
-    with pytest.raises(RuleValidationError, match='duplicate rule id'):
+    with pytest.raises(RuleValidationError, match="duplicate rule id"):
         parse_rule_documents(bundle)
 
 
 def test_rule_validation_error_for_missing_required_field(tmp_path):
-    (tmp_path / 'CLAUDE.md').write_text(
-        "```cldc\n"
-        "rules:\n"
-        "  - id: missing-claims\n"
-        "    kind: require_claim\n"
-        "    when_paths: ['src/**']\n"
-        "    message: needs claim\n"
-        "```\n",
-        encoding='utf-8',
+    (tmp_path / "CLAUDE.md").write_text(
+        "```cldc\nrules:\n  - id: missing-claims\n    kind: require_claim\n    when_paths: ['src/**']\n    message: needs claim\n```\n",
+        encoding="utf-8",
     )
 
     bundle = load_policy_sources(tmp_path)
@@ -86,43 +80,43 @@ def test_rule_validation_error_for_missing_required_field(tmp_path):
 
 
 def test_lockfile_error_for_schema_drift(tmp_path):
-    (tmp_path / 'CLAUDE.md').write_text(
+    (tmp_path / "CLAUDE.md").write_text(
         "```cldc\nrules:\n  - id: deny\n    kind: deny_write\n    paths: ['generated/**']\n    message: stop\n```\n",
-        encoding='utf-8',
+        encoding="utf-8",
     )
     compile_repo_policy(tmp_path)
-    lockfile = tmp_path / '.claude' / 'policy.lock.json'
-    payload = json.loads(lockfile.read_text(encoding='utf-8'))
-    payload['$schema'] = 'https://cldc.dev/schemas/policy-lock/v0'
-    lockfile.write_text(json.dumps(payload), encoding='utf-8')
+    lockfile = tmp_path / ".claude" / "policy.lock.json"
+    payload = json.loads(lockfile.read_text(encoding="utf-8"))
+    payload["$schema"] = "https://cldc.dev/schemas/policy-lock/v0"
+    lockfile.write_text(json.dumps(payload), encoding="utf-8")
 
-    with pytest.raises(LockfileError, match='schema does not match'):
-        check_repo_policy(tmp_path, write_paths=['generated/output.json'])
+    with pytest.raises(LockfileError, match="schema does not match"):
+        check_repo_policy(tmp_path, write_paths=["generated/output.json"])
 
 
 def test_evidence_error_for_malformed_event_payload():
     with pytest.raises(EvidenceError, match="requires a string 'path'"):
-        load_execution_inputs({'events': [{'kind': 'write'}]})
+        load_execution_inputs({"events": [{"kind": "write"}]})
 
 
 def test_repo_boundary_error_for_path_outside_repo(tmp_path):
-    (tmp_path / 'CLAUDE.md').write_text(
+    (tmp_path / "CLAUDE.md").write_text(
         "```cldc\nrules:\n  - id: deny\n    kind: deny_write\n    paths: ['generated/**']\n    message: stop\n```\n",
-        encoding='utf-8',
+        encoding="utf-8",
     )
     compile_repo_policy(tmp_path)
 
-    outside_path = (tmp_path.parent / 'escape.txt').as_posix()
+    outside_path = (tmp_path.parent / "escape.txt").as_posix()
 
-    with pytest.raises(RepoBoundaryError, match='resolves outside the discovered repo root'):
+    with pytest.raises(RepoBoundaryError, match="resolves outside the discovered repo root"):
         check_repo_policy(tmp_path, write_paths=[outside_path])
 
 
 def test_preset_not_found_error_keeps_legacy_catchability():
-    with pytest.raises(PresetNotFoundError, match='not bundled with this cldc version'):
-        load_preset('definitely-not-a-bundled-preset')
+    with pytest.raises(PresetNotFoundError, match="not bundled with this cldc version"):
+        load_preset("definitely-not-a-bundled-preset")
 
     # Confirm it is reachable through every layer of the hierarchy.
     for parent in (PresetError, CldcError, ValueError, LookupError):
         with pytest.raises(parent):
-            load_preset('definitely-not-a-bundled-preset')
+            load_preset("definitely-not-a-bundled-preset")
