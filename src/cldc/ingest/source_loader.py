@@ -5,6 +5,7 @@ import re
 from typing import Any
 
 from pathlib import Path
+from pathlib import PurePosixPath
 
 import yaml
 
@@ -15,6 +16,8 @@ SOURCE_PRECEDENCE = ["claude_md", "inline_block", "compiler_config", "policy_fil
 
 @dataclass(frozen=True)
 class PolicySource:
+    """One canonical policy input with preserved provenance."""
+
     kind: str
     path: str
     content: str
@@ -27,6 +30,8 @@ class PolicySource:
 
 @dataclass(frozen=True)
 class SourceBundle:
+    """The ordered set of policy sources discovered for a repository."""
+
     repo_root: str
     sources: list[PolicySource]
     discovery: DiscoveryResult
@@ -73,12 +78,23 @@ def _load_include_patterns(config_text: str, context: str) -> list[str]:
     include = config_data.get("include", [])
     if include is None:
         return []
-    if not isinstance(include, list) or any(not isinstance(item, str) for item in include):
+    if not isinstance(include, list):
         raise ValueError("include must be a list of glob strings")
-    return include
+    patterns: list[str] = []
+    for index, item in enumerate(include):
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError(f"include[{index}] must be a non-empty glob string")
+        normalized = item.strip()
+        candidate = PurePosixPath(normalized.replace("\\", "/"))
+        if candidate.is_absolute() or ".." in candidate.parts:
+            raise ValueError("include patterns must stay within the repo root")
+        patterns.append(normalized)
+    return patterns
 
 
 def load_policy_sources(repo_root: Path | str) -> SourceBundle:
+    """Load canonical policy sources for the discovered repository root."""
+
     discovery = discover_policy_repo(repo_root)
     if not discovery.discovered:
         raise FileNotFoundError(discovery.warnings[0])
@@ -88,14 +104,14 @@ def load_policy_sources(repo_root: Path | str) -> SourceBundle:
 
     if discovery.claude_path:
         claude_path = root / discovery.claude_path
-        claude_text = claude_path.read_text()
+        claude_text = claude_path.read_text(encoding="utf-8")
         sources.append(PolicySource(kind="claude_md", path=discovery.claude_path, content=claude_text))
         sources.extend(_extract_inline_blocks(claude_path, claude_text))
 
     include_patterns = list(DEFAULT_POLICY_GLOBS)
     if discovery.config_path:
         config_path = root / discovery.config_path
-        config_text = config_path.read_text()
+        config_text = config_path.read_text(encoding="utf-8")
         sources.append(PolicySource(kind="compiler_config", path=discovery.config_path, content=config_text))
         include_patterns.extend(_load_include_patterns(config_text, discovery.config_path))
 
@@ -108,7 +124,7 @@ def load_policy_sources(repo_root: Path | str) -> SourceBundle:
                     continue
                 seen_policy_paths.add(rel)
                 sources.append(
-                    PolicySource(kind="policy_file", path=rel, content=policy_path.read_text())
+                    PolicySource(kind="policy_file", path=rel, content=policy_path.read_text(encoding="utf-8"))
                 )
 
     return SourceBundle(repo_root=str(root), sources=sources, discovery=discovery)

@@ -112,6 +112,8 @@ def _normalize_violation(value: Any, *, index: int) -> dict[str, Any]:
 
 
 def load_check_report(payload: Any) -> dict[str, Any]:
+    """Validate a saved policy report artifact and normalize its shape."""
+
     if not isinstance(payload, dict):
         raise ValueError('policy report payload must be a JSON object')
 
@@ -162,7 +164,7 @@ def load_check_report(payload: Any) -> dict[str, Any]:
 def load_check_report_file(path: Path | str) -> dict[str, Any]:
     file_path = Path(path)
     try:
-        payload = json.loads(file_path.read_text())
+        payload = json.loads(file_path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
         raise FileNotFoundError(f"policy report file not found: {file_path}") from exc
     except json.JSONDecodeError as exc:
@@ -199,6 +201,8 @@ def _provenance(violation: dict[str, Any]) -> str:
 
 
 def render_check_report(payload: dict[str, Any], *, format: str = 'text') -> str:
+    """Render a validated policy report as text or Markdown."""
+
     report = load_check_report(payload)
     if format == 'markdown':
         return _render_markdown(report)

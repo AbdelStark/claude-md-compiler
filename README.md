@@ -1,90 +1,86 @@
-<div align="center">
-
 # claude-md-compiler
 
-**Compile `CLAUDE.md` into a versioned lockfile. Enforce it on local edits, staged diffs, and CI.**
+`cldc` is a Python CLI that compiles repository policy from `CLAUDE.md`, `.claude-compiler.yaml`, and `policies/*.yml` into a versioned lockfile, then checks file edits, commands, and git diffs against that policy.
 
-[![PyPI](https://img.shields.io/pypi/v/claude-md-compiler?color=0F766E)](https://pypi.org/project/claude-md-compiler/)
-[![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-16A34A)](./LICENSE)
+## Why It Exists
 
-</div>
+`CLAUDE.md` is usually advisory text. `cldc` turns repo rules into a deterministic artifact that local runs, CI, and review tooling can enforce the same way every time.
 
-![cldc preview](./docs/screenshot.svg)
+## Who It Is For
 
-`cldc` turns the rules in your `CLAUDE.md` into a deterministic policy lockfile, then checks runtime activity (reads, writes, commands, git diffs) against it. The same lockfile gates a local edit, a pre-commit hook, and a pull request.
+- Developers using agentic coding tools in real repositories.
+- Platform or infra teams that want repo-level guardrails.
+- Maintainers who want explainable, local-first policy checks instead of hidden heuristics.
+
+## Current Status
+
+As of April 7, 2026, `claude-md-compiler` is **alpha**. It is suitable for local CLI use and CI gating in repositories that want executable policy over file writes, required reads, required commands, and coupled file changes. It is not yet suitable for hosted multi-tenant deployments, large-repo topology analysis, automatic mutation of the repo, or policy decisions based on richer transcript semantics than explicit read/write/command events.
+
+Known limitations:
+
+- `claim` events are recorded in reports but are not enforced yet.
+- Rule matching is currently glob-based for paths and exact-string based for commands.
+- There is no built-in autofix execution; `cldc fix` generates a plan only.
+- The project does not yet ship preset policy packs or GitHub-native review integrations.
+- CI currently enforces tests and packaging, but not coverage thresholds or a separate lint/type-check gate.
+
+Breaking changes in the next release: none planned, but this is still an alpha project and contracts may tighten before `1.0`.
 
 ## Install
 
-`cldc` is a CLI you install once and point at any repo whose `CLAUDE.md` you want to enforce.
+`cldc` requires Python 3.11+.
 
 ```bash
-# Persistent install (recommended)
-uv tool install claude-md-compiler        # or: pipx install claude-md-compiler
-                                          # or: pip install claude-md-compiler
+# persistent install
+uv tool install claude-md-compiler
 
-# One-shot, no install
-uvx --from claude-md-compiler cldc compile .
+# or
+pipx install claude-md-compiler
+
+# one-shot
+uvx --from claude-md-compiler cldc --version
 ```
 
-Verify with `cldc --version`. Requires Python 3.11+. The only runtime dependency is PyYAML.
+For local development inside this repository, use the [development workflow](#development) instead of installing the project into itself.
 
-> Run these in *your* project, not inside a clone of this repo. From inside the source tree, `uv add claude-md-compiler` errors with *"self-dependencies are not permitted"* — use the [Develop](#develop) workflow instead.
-
-## Quick start
+## Quickstart
 
 ```bash
-# 1. Compile policy from CLAUDE.md + policies/*.yml
+# 1. Compile policy into .claude/policy.lock.json
 cldc compile .
 
-# 2. Check a change against it
+# 2. Check a change directly
 cldc check . --write src/main.py --command "pytest -q"
 
-# 3. Gate a pull request
+# 3. Explain or save the report
+cldc explain . --write src/main.py --format markdown
+
+# 4. Generate a remediation plan
+cldc fix . --write src/main.py --format markdown
+
+# 5. Gate a staged diff or PR range
+cldc ci . --staged
 cldc ci . --base origin/main --head HEAD
 ```
 
-Exit codes: `0` clean or warn-only · `1` runtime error · `2` blocking violations.
+Exit codes:
 
-## How it works
+- `0`: clean or non-blocking result
+- `1`: runtime or input error
+- `2`: blocking policy violations
 
-```
- sources                                   evidence
- ─────────────────────                     ───────────────────────────
- CLAUDE.md (cldc blocks)                   --read / --write / --command
- .claude-compiler.yaml                     --events-file / --stdin-json
- policies/*.yml                            git diff (staged | base..head)
-          │                                            │
-          ▼                                            ▼
-    cldc compile                               cldc check  /  cldc ci
-          │                                            │
-          ▼                                            ▼
- .claude/policy.lock.json  ───────────────▶   pass · warn · block
-                                                       │
-                                           ┌───────────┴───────────┐
-                                           ▼                       ▼
-                                     cldc explain              cldc fix
-                                   (text · md · json)      (remediation plan)
-```
+Every command supports `--json`, and every command can also persist its output with `--output <file>`.
 
-Three stages: **discover** sources, **compile** them into a digest-stable lockfile, **enforce** it against execution evidence. Reports are deterministic and reusable — `explain` and `fix` consume saved JSON without re-running enforcement.
+## How Policy Is Authored
 
-## Commands
+Sources are discovered from the repo root or any nested path inside the repo. Merge order is deterministic:
 
-| Command | Purpose |
-| --- | --- |
-| `cldc compile [repo]` | Parse sources, write `.claude/policy.lock.json`. |
-| `cldc doctor [repo]`  | Diagnose discovery, parsing, and lockfile state. |
-| `cldc check [repo]`   | Evaluate runtime evidence against the policy. |
-| `cldc ci [repo]`      | Same as `check`, but read changed files from `git diff`. |
-| `cldc explain [repo]` | Render a saved or fresh report as text or markdown. |
-| `cldc fix [repo]`     | Build a deterministic remediation plan from a report. |
+1. `CLAUDE.md`
+2. inline fenced ```` ```cldc ```` blocks inside `CLAUDE.md`
+3. `.claude-compiler.yaml` or `.claude-compiler.yml`
+4. `policies/*.yml` and `policies/*.yaml`
 
-Every command takes `--json` and `--output <file>` for machine-readable, persistable results.
-
-## Writing rules
-
-Rules live inline in `CLAUDE.md`, in `.claude-compiler.yaml`, or in `policies/*.yml`. They merge in that order, deterministically.
+Example:
 
 ````markdown
 # CLAUDE.md
@@ -95,110 +91,137 @@ rules:
     kind: deny_write
     mode: block
     paths: ["generated/**"]
-    message: Generated files are produced by the build — don't edit them.
+    message: Generated files must not be edited by hand.
 ```
 ````
 
 ```yaml
-# policies/commands.yml
+# .claude-compiler.yaml
+default_mode: warn
 rules:
-  - id: run-tests
-    kind: require_command
-    commands: ["pytest -q"]
-    when_paths: ["src/**", "tests/**"]
-    message: Run tests before finishing.
+  - id: keep-tests-in-sync
+    kind: couple_change
+    paths: ["src/**"]
+    when_paths: ["tests/**"]
+    message: Update tests when source changes.
 ```
 
-| Kind | What it asserts |
+## Rule Model
+
+| Kind | Meaning |
 | --- | --- |
-| `deny_write`      | A path glob must not be written. |
-| `require_read`    | A path must be read before another path is written. |
-| `require_command` | A command must run when matching paths are touched. |
-| `couple_change`   | Editing one path requires editing another. |
+| `deny_write` | Paths matching `paths` must not be written. |
+| `require_read` | Writing `paths` requires a prior read matching `before_paths`. |
+| `require_command` | Writing `when_paths` requires at least one listed command to run. |
+| `couple_change` | Writing `paths` requires a companion write matching `when_paths`. |
 
-| Mode | Behavior |
+| Mode | Meaning |
 | --- | --- |
-| `observe` | Recorded only. No exit-code change. |
-| `warn`    | Reported, exit `0`. *(default)* |
-| `block`   | Reported, exit `2`. |
-| `fix`     | Reported with a remediation plan from `cldc fix`. |
+| `observe` | Record the result but do not block. |
+| `warn` | Report the result but do not block. |
+| `block` | Report the result and exit `2`. |
+| `fix` | Report the result as blocking and include remediation guidance. |
 
-## Feeding evidence
+## Evidence Inputs
 
-`check`, `explain`, and `fix` accept evidence three ways. Mix and match.
+Runtime commands accept evidence three ways:
 
 ```bash
-# Direct flags
+# direct flags
 cldc check . --read docs/spec.md --write src/main.py --command "pytest -q"
 
-# JSON file  (read_paths, write_paths, commands, claims, or events[])
-cldc check . --events-file .cldc-events.json
+# JSON file
+cldc check . --events-file .cldc-events.json --json
 
-# Stdin
-cat .cldc-events.json | cldc check . --stdin-json
+# stdin JSON
+cat .cldc-events.json | cldc check . --stdin-json --json
 ```
 
-Save a report once, reuse it everywhere:
+Accepted payload shape:
+
+```json
+{
+  "read_paths": ["docs/spec.md"],
+  "write_paths": ["src/main.py"],
+  "commands": ["pytest -q"],
+  "claims": ["qa-reviewed"],
+  "events": [
+    {"kind": "read", "path": "docs/spec.md"},
+    {"kind": "write", "path": "src/main.py"},
+    {"kind": "command", "command": "pytest -q"},
+    {"kind": "claim", "claim": "qa-reviewed"}
+  ]
+}
+```
+
+Saved report workflow:
 
 ```bash
-cldc check . --events-file .cldc-events.json --json --output artifacts/report.json
-cldc explain . --report-file artifacts/report.json --format markdown --output artifacts/report.md
-cldc fix     . --report-file artifacts/report.json --format markdown --output artifacts/fix.md
+cldc check . --write src/main.py --json --output artifacts/policy-report.json
+cldc explain . --report-file artifacts/policy-report.json --format markdown --output artifacts/policy-report.md
+cldc fix . --report-file artifacts/policy-report.json --json --output artifacts/policy-fix-plan.json
 ```
 
-## CI
+## Architecture
 
-```yaml
-# .github/workflows/policy.yml
-name: policy
-on: pull_request
+`cldc` has a pure-core / thin-shell shape:
 
-jobs:
-  cldc:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-      - uses: astral-sh/setup-uv@v6
-      - run: uv sync
-      - run: uv run cldc compile .
-      - name: Enforce
-        run: |
-          set +e
-          uv run cldc ci . \
-            --base origin/${{ github.base_ref }} --head ${{ github.sha }} \
-            --json --output artifacts/policy-report.json
-          status=$?
-          uv run cldc explain . \
-            --report-file artifacts/policy-report.json \
-            --format markdown --output artifacts/policy-explanation.md
-          exit $status
-```
+- `src/cldc/ingest/`: discover the repo root and load canonical policy sources.
+- `src/cldc/parser/`: validate and normalize rule documents.
+- `src/cldc/compiler/`: build `.claude/policy.lock.json` and doctor the repo state.
+- `src/cldc/runtime/`: evaluate evidence, render reports, build fix plans, and integrate with git.
+- `src/cldc/cli/`: expose the commands and exit-code behavior.
 
-`cldc ci` is the enforcement edge. `cldc explain` turns the saved JSON into a review artifact before the job exits with the original policy status.
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full module map, invariants, and operator runbook.
 
-## Develop
+## Development
 
 ```bash
 git clone https://github.com/AbdelStark/claude-md-compiler
 cd claude-md-compiler
-uv sync                       # creates .venv and installs cldc in editable mode
-uv run pytest                 # full test suite
-
-# Run the local build against a bundled fixture
-uv run cldc compile tests/fixtures/repo_a
-uv run cldc check   tests/fixtures/repo_a \
-  --write src/main.py \
-  --read  docs/rfcs/CLDC-0006-validator-engine.md \
-  --command "pytest -q"
-
-# Or activate the venv and call cldc directly
-source .venv/bin/activate
-cldc --version
+uv sync --locked
+uv run pytest -q
+uv build
 ```
 
-`uv sync` installs the package editable, so source edits take effect immediately — no rebuild needed. Layout: `src/cldc/{ingest,parser,compiler,runtime,cli}`. RFCs that define the contracts live in `docs/rfcs/`.
+Useful local commands:
+
+```bash
+uv run cldc --help
+uv run cldc compile tests/fixtures/repo_a
+uv run cldc check tests/fixtures/repo_a --write src/main.py --json
+uv run cldc ci tests/fixtures/repo_a --base HEAD --head HEAD --json
+uv run cldc explain tests/fixtures/repo_a --write src/main.py --format markdown
+uv run cldc fix tests/fixtures/repo_a --write src/main.py --json
+```
+
+The repository does not require runtime environment variables.
+
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md). In short:
+
+- use `uv sync --locked`
+- add or update tests with every behavior change
+- keep RFCs in `docs/rfcs/` stable unless the spec itself is being revised
+- update `README.md`, `CLAUDE.md`, and `CHANGELOG.md` when the public surface changes
+
+## Roadmap
+
+1. Policy surface hardening
+   Exit criteria: fully documented semantics for every shipped rule kind and enforcement mode, plus regression coverage for malformed or tampered lockfiles.
+2. Quality gates
+   Exit criteria: add explicit lint/type/coverage policy to CI and document the supported quality bar for contributors.
+3. Integrations and scale
+   Exit criteria: preset packs, GitHub-native review/report flows, and better large-repo heuristics without weakening deterministic behavior.
+
+## Help
+
+- Issues: <https://github.com/AbdelStark/claude-md-compiler/issues>
+- Repository: <https://github.com/AbdelStark/claude-md-compiler>
+- Architecture guide: [ARCHITECTURE.md](./ARCHITECTURE.md)
+- Changelog: [CHANGELOG.md](./CHANGELOG.md)
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+MIT. See [LICENSE](./LICENSE).

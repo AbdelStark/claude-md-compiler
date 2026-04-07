@@ -17,6 +17,8 @@ LOCKFILE_SCHEMA = "https://cldc.dev/schemas/policy-lock/v1"
 
 @dataclass(frozen=True)
 class CompiledPolicy:
+    """Summary of a successful compile run and the artifact it produced."""
+
     repo_root: str
     lockfile_path: str
     compiler_version: str
@@ -35,6 +37,8 @@ class CompiledPolicy:
 
 @dataclass(frozen=True)
 class DoctorReport:
+    """Health report for source discovery, parsing, and lockfile state."""
+
     repo_root: str
     discovered: bool
     source_count: int
@@ -83,7 +87,18 @@ def _build_lock_payload(repo_root: Path, bundle, parsed) -> dict[str, Any]:
     }
 
 
+def _compiled_discovery(discovery: dict[str, Any]) -> dict[str, Any]:
+    compiled_discovery = dict(discovery)
+    compiled_discovery["lockfile_path"] = ".claude/policy.lock.json"
+    compiled_discovery["warnings"] = [
+        warning for warning in compiled_discovery.get("warnings", []) if warning != "compiled lockfile not found at .claude/policy.lock.json"
+    ]
+    return compiled_discovery
+
+
 def compile_repo_policy(repo_root: Path | str) -> CompiledPolicy:
+    """Compile policy sources into a deterministic lockfile under `.claude/`."""
+
     bundle = load_policy_sources(repo_root)
     parsed = parse_rule_documents(bundle)
     root = Path(bundle.repo_root)
@@ -92,7 +107,8 @@ def compile_repo_policy(repo_root: Path | str) -> CompiledPolicy:
     lock_dir = root / ".claude"
     lock_dir.mkdir(parents=True, exist_ok=True)
     lock_path = lock_dir / "policy.lock.json"
-    lock_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    lock_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    discovery = _compiled_discovery(bundle.discovery.to_dict())
 
     return CompiledPolicy(
         repo_root=str(root),
@@ -104,8 +120,8 @@ def compile_repo_policy(repo_root: Path | str) -> CompiledPolicy:
         rule_count=len(parsed.rules),
         source_count=len(bundle.sources),
         source_paths=[source.path for source in bundle.sources],
-        warnings=list(bundle.discovery.warnings),
-        discovery=bundle.discovery.to_dict(),
+        warnings=list(discovery["warnings"]),
+        discovery=discovery,
     )
 
 
@@ -126,7 +142,7 @@ def _validate_existing_lockfile(
     warnings: list[str],
 ) -> tuple[str | None, str | None, str | None]:
     try:
-        payload = json.loads(lockfile.read_text())
+        payload = json.loads(lockfile.read_text(encoding="utf-8"))
     except JSONDecodeError as exc:
         errors.append(f"lockfile is not valid JSON: {exc}")
         return None, None, None
@@ -178,6 +194,8 @@ def _recommend_next_action(errors: list[str], warnings: list[str]) -> str | None
 
 
 def doctor_repo_policy(repo_root: Path | str) -> DoctorReport:
+    """Inspect policy discovery, parsing health, and lockfile freshness."""
+
     errors: list[str] = []
     warnings: list[str] = []
 

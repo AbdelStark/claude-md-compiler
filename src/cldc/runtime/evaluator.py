@@ -17,11 +17,13 @@ from cldc.runtime.report_schema import CHECK_REPORT_FORMAT_VERSION, CHECK_REPORT
 BLOCKING_MODES = {"block", "fix"}
 NON_BLOCKING_MODES = {"observe", "warn"}
 ALLOWED_MODES = BLOCKING_MODES | NON_BLOCKING_MODES
-ALLOWED_RULE_KINDS = {"deny_write", "require_read", "require_command"}
+ALLOWED_RULE_KINDS = {"deny_write", "require_read", "require_command", "couple_change"}
 
 
 @dataclass(frozen=True)
 class Violation:
+    """One policy violation with enough context to explain and remediate it."""
+
     rule_id: str
     kind: str
     mode: str
@@ -41,6 +43,8 @@ class Violation:
 
 @dataclass(frozen=True)
 class CheckReport:
+    """Versioned outcome of evaluating runtime evidence against compiled policy."""
+
     ok: bool
     repo_root: str
     lockfile_path: str
@@ -118,6 +122,20 @@ def _matching_commands(commands: list[str], expected: list[str] | None) -> list[
     return [command for command in commands if command in expected]
 
 
+def _matching_coupled_paths(
+    write_paths: list[str],
+    *,
+    triggered_paths: list[str],
+    required_patterns: list[str] | None,
+) -> list[str]:
+    if not required_patterns:
+        return []
+    triggered_path_set = set(triggered_paths)
+    return [
+        path for path in write_paths if path not in triggered_path_set and _matches_any(path, required_patterns)
+    ]
+
+
 def _load_lockfile(repo_root: Path) -> dict[str, Any]:
     lockfile = repo_root / LOCKFILE_PATH
     if not lockfile.exists():
@@ -126,7 +144,7 @@ def _load_lockfile(repo_root: Path) -> dict[str, Any]:
         )
 
     try:
-        payload = json.loads(lockfile.read_text())
+        payload = json.loads(lockfile.read_text(encoding="utf-8"))
     except JSONDecodeError as exc:
         raise ValueError(f"compiled lockfile is not valid JSON: {exc}") from exc
 
@@ -242,6 +260,11 @@ def _explain_violation(
             f"Write activity {path_list} triggered require_command rule '{rule_id}', but no required command matched {required_command_list}.",
             f"Run one of the required commands before finishing: {required_command_list}.",
         )
+    if kind == "couple_change":
+        return (
+            f"Write activity {path_list} triggered couple_change rule '{rule_id}', but no coupled change matched {required_path_list}.",
+            f"Update at least one path matching {required_path_list} alongside {path_list}.",
+        )
     return (
         f"Rule '{rule_id}' triggered for paths {path_list} and commands {command_list}.",
         "Inspect the matched rule and input evidence, then rerun the policy check.",
@@ -315,7 +338,7 @@ def _evaluate_rule(
 ) -> Violation | None:
     kind = rule.get("kind")
     if kind not in ALLOWED_RULE_KINDS:
-        return None
+        raise ValueError(f"compiled lockfile contains unsupported rule kind: {kind!r}")
 
     if kind == "deny_write":
         matched_paths = _matching_paths(write_paths, rule.get("paths"))
@@ -335,6 +358,24 @@ def _evaluate_rule(
             default_mode=default_mode,
             matched_paths=triggered_paths,
             required_paths=list(rule.get("before_paths") or []),
+        )
+
+    if kind == "couple_change":
+        triggered_paths = _matching_paths(write_paths, rule.get("paths"))
+        if not triggered_paths:
+            return None
+        matched_coupled_paths = _matching_coupled_paths(
+            write_paths,
+            triggered_paths=triggered_paths,
+            required_patterns=rule.get("when_paths"),
+        )
+        if matched_coupled_paths:
+            return None
+        return _build_violation(
+            rule,
+            default_mode=default_mode,
+            matched_paths=triggered_paths,
+            required_paths=list(rule.get("when_paths") or []),
         )
 
     triggered_paths = _matching_paths(write_paths, rule.get("when_paths"))
@@ -359,6 +400,8 @@ def check_repo_policy(
     commands: list[str] | None = None,
     event_payload: dict[str, Any] | None = None,
 ) -> CheckReport:
+    """Evaluate runtime evidence against the compiled policy lockfile for a repo."""
+
     discovery = discover_policy_repo(repo_root)
     if not discovery.discovered:
         raise FileNotFoundError(discovery.warnings[0])

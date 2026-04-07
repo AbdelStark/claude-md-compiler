@@ -209,6 +209,58 @@ def test_check_repo_policy_blocks_deny_write_rule(compiled_repo):
     assert violation.matched_paths == ['generated/output.json']
 
 
+def test_check_repo_policy_enforces_couple_change_rules(tmp_path):
+    (tmp_path / 'CLAUDE.md').write_text(
+        "```cldc\nrules:\n  - id: keep-tests-in-sync\n    kind: couple_change\n    paths: ['src/**']\n    when_paths: ['tests/**']\n    message: Update tests when source changes.\n```\n"
+    )
+    compile_repo_policy(tmp_path)
+
+    report = check_repo_policy(tmp_path, write_paths=['src/app.py'])
+
+    assert report.decision == 'warn'
+    assert report.summary == 'Policy check found 1 non-blocking violation(s).'
+    assert report.next_action == 'Update at least one path matching tests/** alongside src/app.py.'
+    assert report.violation_count == 1
+    violation = report.violations[0]
+    assert violation.rule_id == 'keep-tests-in-sync'
+    assert violation.kind == 'couple_change'
+    assert violation.required_paths == ['tests/**']
+    assert violation.explanation == (
+        "Write activity src/app.py triggered couple_change rule 'keep-tests-in-sync', "
+        "but no coupled change matched tests/**."
+    )
+
+
+def test_check_repo_policy_passes_when_couple_change_has_companion_write(tmp_path):
+    (tmp_path / 'CLAUDE.md').write_text(
+        "```cldc\nrules:\n  - id: keep-tests-in-sync\n    kind: couple_change\n    paths: ['src/**']\n    when_paths: ['tests/**']\n    message: Update tests when source changes.\n```\n"
+    )
+    compile_repo_policy(tmp_path)
+
+    report = check_repo_policy(
+        tmp_path,
+        write_paths=['src/app.py', 'tests/test_app.py'],
+    )
+
+    assert report.decision == 'pass'
+    assert report.violation_count == 0
+    assert report.violations == []
+
+
+def test_check_repo_policy_rejects_unsupported_rule_kinds_in_lockfile(tmp_path):
+    (tmp_path / 'CLAUDE.md').write_text(
+        "```cldc\nrules:\n  - id: deny\n    kind: deny_write\n    paths: ['generated/**']\n    message: stop\n```\n"
+    )
+    compile_repo_policy(tmp_path)
+    lockfile = tmp_path / '.claude' / 'policy.lock.json'
+    payload = json.loads(lockfile.read_text())
+    payload['rules'][0]['kind'] = 'unexpected_kind'
+    lockfile.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match='unsupported rule kind'):
+        check_repo_policy(tmp_path, write_paths=['generated/output.json'])
+
+
 def test_check_repo_policy_requires_existing_lockfile(tmp_path):
     (tmp_path / 'CLAUDE.md').write_text('# repo\n')
 

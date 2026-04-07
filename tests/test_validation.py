@@ -46,6 +46,14 @@ def test_parser_rejects_unknown_rule_kind(tmp_path):
         parse_rule_documents(bundle)
 
 
+def test_loader_rejects_include_patterns_that_escape_repo_root(tmp_path):
+    (tmp_path / 'CLAUDE.md').write_text('# ok\n')
+    (tmp_path / '.claude-compiler.yaml').write_text('include:\n  - ../outside.yml\n')
+
+    with pytest.raises(ValueError, match='stay within the repo root'):
+        load_policy_sources(tmp_path)
+
+
 def test_cli_returns_nonzero_and_actionable_error_on_bad_input(tmp_path):
     (tmp_path / 'CLAUDE.md').write_text(
         "```cldc\nrules:\n  - id: broken\n    message: missing kind\n```\n"

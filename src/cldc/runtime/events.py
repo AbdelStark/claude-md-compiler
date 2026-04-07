@@ -11,6 +11,8 @@ ALLOWED_EVENT_KINDS = {"read", "write", "command", "claim"}
 
 @dataclass(frozen=True)
 class ExecutionInputs:
+    """Canonical runtime evidence grouped by reads, writes, commands, and claims."""
+
     read_paths: list[str]
     write_paths: list[str]
     commands: list[str]
@@ -71,6 +73,8 @@ def _parse_event(event: Any, *, index: int) -> ExecutionInputs:
 
 
 def load_execution_inputs(payload: Any) -> ExecutionInputs:
+    """Validate and normalize execution-input JSON into one canonical payload."""
+
     if not isinstance(payload, dict):
         raise ValueError("execution input payload must be a JSON object")
 
@@ -95,9 +99,11 @@ def load_execution_inputs(payload: Any) -> ExecutionInputs:
 
 
 def load_execution_inputs_file(path: Path | str) -> ExecutionInputs:
+    """Load execution-input JSON from disk and validate its shape."""
+
     file_path = Path(path)
     try:
-        payload = json.loads(file_path.read_text())
+        payload = json.loads(file_path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
         raise FileNotFoundError(f"execution input payload file not found: {file_path}") from exc
     except json.JSONDecodeError as exc:
@@ -107,6 +113,8 @@ def load_execution_inputs_file(path: Path | str) -> ExecutionInputs:
 
 
 def load_execution_inputs_text(text: str, *, source: str = "stdin") -> ExecutionInputs:
+    """Load execution-input JSON from a text payload."""
+
     try:
         payload = json.loads(text)
     except json.JSONDecodeError as exc:

@@ -19,6 +19,8 @@ REQUIRED_FIELDS_BY_KIND = {
 
 @dataclass(frozen=True)
 class RuleDefinition:
+    """Normalized rule definition with source provenance."""
+
     rule_id: str
     kind: str
     message: str
@@ -37,6 +39,8 @@ class RuleDefinition:
 
 @dataclass(frozen=True)
 class ParsedPolicy:
+    """Fully parsed policy ready for lockfile serialization."""
+
     default_mode: str
     rules: list[RuleDefinition]
 
@@ -119,6 +123,8 @@ def _coerce_rules(source, raw: str) -> list[RuleDefinition]:
 
 
 def parse_rule_documents(bundle: SourceBundle) -> ParsedPolicy:
+    """Validate and merge rule documents from a loaded source bundle."""
+
     default_mode = "warn"
     rules: list[RuleDefinition] = []
     seen_ids: set[str] = set()

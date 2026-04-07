@@ -49,6 +49,8 @@ def _add_report_input_flags(parser: argparse.ArgumentParser) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the `cldc` argument parser and all command subparsers."""
+
     parser = argparse.ArgumentParser(
         prog="cldc",
         description="Compile and enforce repository policy derived from CLAUDE.md.",
@@ -136,7 +138,7 @@ def _output_text(text: str, output_path: str | None = None) -> None:
         target = Path(output_path)
         target.parent.mkdir(parents=True, exist_ok=True)
         normalized_text = text if text.endswith('\n') else f"{text}\n"
-        target.write_text(normalized_text)
+        target.write_text(normalized_text, encoding="utf-8")
 
 
 
@@ -332,6 +334,8 @@ def _load_fix_payload(args) -> dict[str, object]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the CLI and return a shell-friendly exit code."""
+
     parser = build_parser()
     args = parser.parse_args(argv)
 

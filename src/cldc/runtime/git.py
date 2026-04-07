@@ -28,6 +28,8 @@ def collect_git_write_paths(
     base: str | None = None,
     head: str | None = None,
 ) -> tuple[list[str], dict[str, Any]]:
+    """Collect changed paths from git and return them with provenance metadata."""
+
     discovery = discover_policy_repo(repo_root)
     if not discovery.discovered:
         raise FileNotFoundError(discovery.warnings[0])

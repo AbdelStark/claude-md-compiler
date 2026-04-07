@@ -11,6 +11,8 @@ LOCKFILE_PATH = ".claude/policy.lock.json"
 
 @dataclass(frozen=True)
 class DiscoveryResult:
+    """Discovery metadata for the nearest policy-bearing repository."""
+
     start_path: str
     repo_root: str
     discovered: bool
@@ -35,6 +37,8 @@ def _list_default_policy_paths(root: Path) -> list[str]:
 
 
 def discover_policy_repo(start_path: Path | str) -> DiscoveryResult:
+    """Walk up from a path until a repository with policy markers is found."""
+
     original = Path(start_path)
     if not original.exists():
         raise FileNotFoundError(original)

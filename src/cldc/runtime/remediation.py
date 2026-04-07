@@ -110,6 +110,12 @@ def _steps_for_violation(violation: dict[str, Any]) -> list[str]:
             "Review the command output and address any failures before marking the change complete.",
             "Re-run `cldc check` or `cldc ci` after validation succeeds.",
         ]
+    if violation['kind'] == 'couple_change':
+        return [
+            f"Update at least one coupled path alongside {matched_display}: {required_path_display}.",
+            f"Review whether the change in {matched_display} should also update tests, docs, or related files matched by {required_path_display}.",
+            "Re-run `cldc check` or `cldc ci` after the coupled change is included.",
+        ]
     return [
         "Inspect the matched rule and evidence to understand why the policy fired.",
         "Update the change or workflow to satisfy the rule, then re-run the policy check.",
@@ -132,6 +138,8 @@ def _next_action(remediations: list[dict[str, Any]]) -> str | None:
 
 
 def build_fix_plan(report_payload: dict[str, Any]) -> dict[str, Any]:
+    """Build a deterministic remediation plan from a policy report artifact."""
+
     report = load_check_report(report_payload)
     remediations: list[dict[str, Any]] = []
 
@@ -235,6 +243,8 @@ def _normalize_fix_plan(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def render_fix_plan(payload: dict[str, Any], *, format: str = 'text') -> str:
+    """Render a fix plan as text or Markdown."""
+
     if isinstance(payload, dict) and payload.get('$schema') == FIX_PLAN_SCHEMA:
         plan = _normalize_fix_plan(payload)
     else:
