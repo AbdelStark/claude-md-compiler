@@ -3,6 +3,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import cldc
 from cldc.runtime.remediation import FIX_PLAN_FORMAT_VERSION, FIX_PLAN_SCHEMA
 from cldc.runtime.report_schema import CHECK_REPORT_FORMAT_VERSION, CHECK_REPORT_SCHEMA
 
@@ -1135,4 +1136,4 @@ def test_cli_help_exposes_version_and_absolute_path_support():
         env=PYTHONPATH_ENV,
     )
     assert version_result.returncode == 0
-    assert version_result.stdout.strip().startswith('cldc 0.1.0')
+    assert version_result.stdout.strip() == f'cldc {cldc.__version__}'

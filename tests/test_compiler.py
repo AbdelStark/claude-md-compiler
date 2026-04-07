@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import cldc
 from cldc.compiler.policy_compiler import compile_repo_policy
 
 
@@ -21,7 +22,7 @@ def test_compile_repo_policy_writes_lockfile(tmp_path):
     assert lockfile.exists()
     payload = json.loads(lockfile.read_text())
     assert payload['$schema'] == 'https://cldc.dev/schemas/policy-lock/v1'
-    assert payload['compiler_version'] == '0.1.0'
+    assert payload['compiler_version'] == cldc.__version__
     assert payload['default_mode'] == 'warn'
     assert isinstance(payload['source_digest'], str)
     assert len(payload['source_digest']) == 64

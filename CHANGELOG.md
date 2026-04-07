@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.1] - Unreleased
+## [0.1.1] - 2026-04-07
 
 ### Added
 
@@ -34,6 +34,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   remediation can both reason about claim state.
 - New `preset` source kind in `SOURCE_PRECEDENCE`, exported as
   `PRESET_SOURCE_KIND` from `cldc.presets`.
+- Typed exception hierarchy in `cldc.errors` (`CldcError`, `LockfileError`,
+  `RuleValidationError`, `EvidenceError`, `ReportError`, `PolicySourceError`,
+  `PresetError`, `PresetNotFoundError`, `RepoBoundaryError`). Every class
+  inherits from `ValueError` for back-compat.
+- Structured logging via `cldc._logging`. Library is silent by default
+  (NullHandler). CLI exposes `--verbose`/`-v` and `--quiet`/`-q` to attach
+  stderr handlers.
+- `py.typed` marker so downstream type checkers pick up inline annotations.
+- Bundled dev toolchain via `[dependency-groups].dev`: `ruff`, `pyright`,
+  `pytest-cov`, `pytest-benchmark`, `hypothesis`, `types-PyYAML`.
+- `[tool.ruff]`, `[tool.pyright]`, `[tool.coverage.*]` config in
+  `pyproject.toml`.
+- CI jobs for lint (`ruff check`, `ruff format --check`), typecheck
+  (`pyright src`), and coverage (`pytest --cov --cov-fail-under=80`).
+- Hypothesis property tests (`tests/test_properties.py`, 16 tests across 6
+  classes covering path normalization, glob matching, rule evaluation, and
+  evidence loader idempotence).
+- `pytest-benchmark` baselines (`tests/test_benchmarks.py`, 6 benchmarks
+  opt-in via `--benchmark-only`; skipped by default via `--benchmark-skip` in
+  `addopts`).
+- `ARCHITECTURE.md` documenting the layered design, data flow, schema
+  contracts, invariants, and extension points.
+- `docs/rfcs/` with 6 frozen RFCs (`CLDC-0001` through `CLDC-0005`, plus an
+  index) documenting lockfile, check-report, fix-plan, `require_claim`, and
+  preset pack contracts.
+- `Makefile` with 12 targets (`install`, `test`, `lint`, `fmt`, `fmt-check`,
+  `typecheck`, `cover`, `build`, `smoke`, `clean`, `all`).
+- GitHub issue templates (bug, feature), PR template, and `SECURITY.md`.
 - Hero header with badges and terminal screenshot in `README.md`.
 
 ### Changed
@@ -42,12 +70,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `["claude_md", "inline_block", "compiler_config", "preset", "policy_file"]`.
   Consumers reading this array out of the lockfile should accept the new
   `preset` entry; the order is still load order, not priority.
+- CI test matrix narrowed to Python 3.14 only. Supported runtime is still
+  `>=3.11` per `pyproject.toml`.
 
 ### Fixed
 
-- Placeholder. Unit 1 lands a fix for the latent `doctor` crash on
-  preset-using repos in a parallel branch; if that change merges first, move
-  the entry here.
+- `doctor_repo_policy` no longer crashes on repos that extend a bundled
+  preset. The staleness check now skips sources whose path starts with
+  `preset:`, mirroring the fix already landed in
+  `runtime/evaluator.py::_validate_lockfile_freshness`. Regression test in
+  `tests/test_presets.py::test_doctor_repo_policy_with_extends_does_not_crash_on_preset_paths`.
 
 ## [0.1.0] - 2026-04-07
 
