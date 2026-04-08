@@ -16,6 +16,8 @@ htmlcov/
 .env.*
 .claude/tsc-cache/
 .claude/cache/
+.claude/policy.lock.json
+.claude/worktrees/
 .tldr/
 .tldrignore
 tests/fixtures/**/.claude/
