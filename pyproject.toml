@@ -5,7 +5,7 @@ build-backend = "uv_build"
 
 [project]
 name = "claude-md-compiler"
-version = "0.1.1"
+version = "0.2.0"
 description = "Compile structured Claude Code workflow policy into versioned artifacts and enforce it against runtime evidence, hooks, and git diffs."
 readme = "README.md"
 license = "MIT"

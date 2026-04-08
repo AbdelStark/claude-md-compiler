@@ -167,7 +167,7 @@ the digest and forces `cldc compile` to be re-run.
 
 ### Bundled packs
 
-As of version 0.1.1, three packs ship with `cldc`:
+As of version 0.2.0, three packs ship with `cldc`:
 
 | Name        | One-line description                                                                                  |
 |-------------|-------------------------------------------------------------------------------------------------------|

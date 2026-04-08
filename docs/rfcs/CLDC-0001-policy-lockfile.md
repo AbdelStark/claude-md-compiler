@@ -188,7 +188,7 @@ brevity:
 ```json
 {
   "$schema": "https://cldc.dev/schemas/policy-lock/v1",
-  "compiler_version": "0.1.1",
+  "compiler_version": "0.2.0",
   "default_mode": "warn",
   "discovery": { "...": "DiscoveryResult.to_dict()" },
   "format_version": "1",

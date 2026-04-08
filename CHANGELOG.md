@@ -7,8 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-04-08
+
 ### Added
 
+- Stateful Claude Code hook adapter that captures reads, writes, commands,
+  command outcomes, and explicit claims across a session. The generated
+  Claude settings now wire `SessionStart`, `PreToolUse`, `PostToolUse`,
+  `PostToolUseFailure`, `Stop`, and `SessionEnd`, and `cldc hook claim`
+  appends explicit claims into the saved session state.
+- `require_command_success` rule kind: path-scoped workflow invariants can
+  now require a listed command to complete successfully, rather than only
+  checking that the command string appeared in the evidence set.
+- Outcome-aware runtime evidence via `command_results`, plus
+  `--command-success` and `--command-failure` on `check`, `explain`, and
+  `fix` so embedders and CI wrappers can distinguish successful validation
+  runs from failed ones.
+- README and architecture/docs reframing around Anthropic's documented
+  boundary that Claude treats `CLAUDE.md` as context, not enforced
+  configuration. The docs now emphasize `cldc` as a workflow-invariant policy
+  engine, versioned artifact generator, and deterministic judge between the
+  agent and the repo.
 - New `docs/library-usage.md` — full library reference covering every public
   symbol, the JSON shapes that `to_dict()` produces, the typed exception
   hierarchy, the determinism guarantees, and worked examples for each rule
@@ -26,9 +45,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   validation paths: schema drift, format-version mismatch, malformed
   remediation lists, missing required fields, non-bool `can_autofix`,
   non-int counts, non-dict inputs, and nullable source-provenance fields.
-- `tests/test_version.py` (3 tests) covering the
+- `tests/test_version.py` (5 tests) covering the
   `cldc.__version__`/`_read_source_version` resolver, including the
-  `pyproject.toml`-missing fallback path.
+  `pyproject.toml`-missing fallback path and the repo-checkout preference over
+  stale installed metadata.
 - Module-level docstrings on every previously docstring-less module under
   `src/cldc/`: top-level package, CLI, ingest (discovery, source loader, init),
   parser (rule parser, init), compiler (policy compiler, init), runtime
@@ -49,6 +69,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `cldc.__version__` now prefers the checked-out repo version from
+  `pyproject.toml` when available, then falls back to installed package
+  metadata. This avoids stale `egg-info` state causing release/version drift
+  in local development and CI.
 - Removed the unused `_safe_resolve` helper from
   `src/cldc/compiler/policy_compiler.py`; the doctor report now resolves the
   repo path inline. No public API change.
@@ -58,6 +82,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Claude hook report handoff now keeps the latest saved report in sync with
+  command outcomes and explicit claims, and `cldc explain` / `cldc fix` can
+  load the latest Claude hook report directly by session id.
 - `ARCHITECTURE.md` now lists every test file and points at every CLI
   subparser the package actually ships (`init`, `hook`, `tui`, plus the
   long-standing seven). `CONTRIBUTING.md` test layout matches.
@@ -255,6 +282,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Git-aware CI entrypoints: staged and base/head diff evaluation.
 - Deterministic source discovery and SHA-256 `source_digest`.
 
-[Unreleased]: https://github.com/AbdelStark/claude-md-compiler/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/AbdelStark/claude-md-compiler/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/AbdelStark/claude-md-compiler/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/AbdelStark/claude-md-compiler/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/AbdelStark/claude-md-compiler/releases/tag/v0.1.0

@@ -83,21 +83,24 @@ uv run cldc hook install git-pre-commit /path/to/repo
 
 ## Current State
 
-As of April 7, 2026, the shipped CLI surface is `init`, `compile`, `doctor`, `check`, `ci`, `explain`, `fix`, `preset`, `tui`, and `hook`.
+As of April 8, 2026, the shipped CLI surface is `init`, `compile`, `doctor`, `check`, `ci`, `explain`, `fix`, `preset`, `tui`, and `hook`.
 
 Implemented:
 
 - deterministic source discovery and lockfile generation
 - `cldc init` onboarding scaffolder (`.claude-compiler.yaml` + stub `CLAUDE.md`, one or more presets via `--preset`, safe by default, `--force` to overwrite the config)
 - doctor diagnostics for malformed, stale, and drifted artifacts
-- runtime enforcement for `deny_write`, `require_read`, `require_command`, `forbid_command`, `couple_change`, and `require_claim`
+- runtime enforcement for `deny_write`, `require_read`, `require_command`, `require_command_success`, `forbid_command`, `couple_change`, and `require_claim`
 - claim ingestion via `--claim`, events file, stdin JSON, and event payloads
 - bundled preset policy packs (`default`, `strict`, `docs-sync`) reachable via `extends:` in `.claude-compiler.yaml` and inspectable with `cldc preset list`/`cldc preset show`
 - saved policy report rendering and deterministic fix-plan generation
 - git-aware CI entrypoints for staged and base/head diffs
+- stateful Claude Code hook adapter: `SessionStart`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `Stop`, and `SessionEnd` accumulate session evidence and enforce blocking workflow invariants before write or session completion
+- explicit Claude Code session claims via `cldc hook claim`
 - `cldc hook generate {git-pre-commit|claude-code}` and `cldc hook install git-pre-commit` to wire automatic enforcement into git and the Claude Code agent harness
 
 Known limitations:
 
+- no semantic extraction of free-form prose into rules yet; only structured policy is compiled today
 - no automatic repo mutation or autofix execution
 - no separate lint/type/coverage enforcement in CI yet

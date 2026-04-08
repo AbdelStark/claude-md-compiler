@@ -37,17 +37,17 @@ def test_read_source_version_reads_pyproject_toml():
 
 
 def test_resolve_version_prefers_source_checkout_version(monkeypatch):
-    monkeypatch.setattr(cldc, "_read_source_version", lambda: "0.1.1")
-    monkeypatch.setattr(cldc, "_read_installed_version", lambda: "0.1.0")
+    monkeypatch.setattr(cldc, "_read_source_version", lambda: "9.9.9")
+    monkeypatch.setattr(cldc, "_read_installed_version", lambda: "9.9.8")
 
-    assert _resolve_version() == "0.1.1"
+    assert _resolve_version() == "9.9.9"
 
 
 def test_resolve_version_falls_back_to_installed_metadata(monkeypatch):
     monkeypatch.setattr(cldc, "_read_source_version", lambda: "0.0.0")
-    monkeypatch.setattr(cldc, "_read_installed_version", lambda: "0.1.1")
+    monkeypatch.setattr(cldc, "_read_installed_version", lambda: "9.9.9")
 
-    assert _resolve_version() == "0.1.1"
+    assert _resolve_version() == "9.9.9"
 
 
 def test_read_source_version_falls_back_when_pyproject_missing(monkeypatch, tmp_path):

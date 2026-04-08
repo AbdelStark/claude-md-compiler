@@ -84,10 +84,24 @@ Keep these files current when behavior changes:
 Before cutting a release, run:
 
 ```bash
+uvx --from 'ruff>=0.6' ruff format --check src tests
+uv run ruff check src tests
+uv run pyright src
 uv run pytest -q
 uv build
+make smoke
 uv run cldc --version
 ```
+
+## Publishing
+
+When cutting a tagged release:
+
+1. Update `pyproject.toml`, `CHANGELOG.md`, and any versioned examples or agent-context files that refer to the shipped surface.
+2. Run the full release checks above.
+3. Commit the release metadata bump and tag it as `vX.Y.Z`.
+4. Push `main` and the new tag.
+5. Publish the built artifacts with `uv publish`.
 
 ## Local quality gates
 
