@@ -91,6 +91,7 @@ from cldc.runtime.evaluator import (
     Violation,
 )
 from cldc.runtime.events import (
+    CommandResult,
     load_execution_inputs,
     load_execution_inputs_file,
     load_execution_inputs_text,
@@ -323,11 +324,14 @@ inputs = load_execution_inputs({
     "read_paths": ["docs/spec.md"],
     "write_paths": ["src/main.py"],
     "commands": ["pytest -q"],
+    "command_results": [
+        {"command": "pytest -q", "outcome": "success"},
+    ],
     "claims": ["qa-reviewed"],
     "events": [
         {"kind": "read", "path": "docs/extra.md"},
         {"kind": "write", "path": "src/util.py"},
-        {"kind": "command", "command": "ruff check"},
+        {"kind": "command", "command": "ruff check", "outcome": "success"},
         {"kind": "claim", "claim": "ci-green"},
     ],
 })
@@ -342,6 +346,18 @@ inputs = load_execution_inputs_text(stdin_text, source="stdin")
 `ExecutionInputs.merged_with(other)` returns a new `ExecutionInputs` with
 fields concatenated in order — no deduplication. Use it to merge a JSON
 payload with explicit per-flag evidence the way the CLI does.
+
+Use `CommandResult` when a caller needs outcome-aware command evidence:
+
+```python
+from cldc.runtime.events import CommandResult
+
+report = check_repo_policy(
+    "./my-repo",
+    write_paths=["src/main.py"],
+    command_results=[CommandResult(command="pytest -q", outcome="success")],
+)
+```
 
 The full payload can be passed straight to `check_repo_policy` via
 `event_payload=...`:
@@ -523,7 +539,7 @@ wires Claude Code's lifecycle hooks into `cldc`'s stateful session adapter:
   `Bash` evidence, persists the latest report, and returns JSON hook feedback
   Claude can actually process.
 - `PostToolUseFailure` records failed commands separately so only successful
-  commands satisfy `require_command`.
+  commands satisfy `require_command_success`.
 - `Stop` evaluates the full accumulated session and can emit a blocking
   payload while workflow invariants remain unmet.
 - `SessionEnd` deletes mutable session state but leaves the latest saved

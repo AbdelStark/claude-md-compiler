@@ -53,7 +53,7 @@ artifact, not a best-effort memory of repo prose.
 
 Most "AI guardrail" tools tangle these three things together. `cldc` keeps them apart on purpose:
 
-- **Policy** is the set of rules in the lockfile (`deny_write`, `require_read`, `require_command`, `couple_change`, `require_claim`).
+- **Policy** is the set of rules in the lockfile (`deny_write`, `require_read`, `require_command`, `require_command_success`, `couple_change`, `require_claim`).
 - **Evidence** is what actually happened on a given run: files read, files written, commands executed, claims asserted. You hand it to `cldc` via flags, a JSON file, stdin, or a git diff.
 - **Decision** is the pure function `evaluate(policy, evidence) -> {pass, warn, block}` plus a structured report. No hidden state, no network calls, no LLM in the loop.
 
@@ -94,6 +94,8 @@ ones that native allow/deny settings do not express well:
 
 - `require_read`: read required context before editing sensitive paths
 - `require_command`: run validation commands before a change is considered done
+- `require_command_success`: require the validation run to actually pass
+- `require_command_success`: require an explicit successful validation run
 - `couple_change`: require companion edits such as source + tests
 - `require_claim`: require an explicit sign-off or CI claim before finishing
 
@@ -293,8 +295,8 @@ The generated Claude Code settings wire the lifecycle this way:
    `Bash` evidence, then emits Claude-visible JSON feedback when warnings or
    blocking workflow requirements remain.
 4. `PostToolUseFailure` records failed `Bash` commands separately, keeps them
-   out of the success-only command evidence set, and tells Claude that failed
-   commands do not satisfy `require_command`.
+   in outcome-aware evidence, and tells Claude that failed commands do not
+   satisfy `require_command_success`.
 5. `Stop` evaluates the full accumulated session state and returns a blocking
    payload while blocking workflow invariants remain unmet, including
    `couple_change`, `require_command`, and `require_claim`.
@@ -323,7 +325,7 @@ cldc explain . --hook-report --hook-session abc123
 - Keep `PreToolUse` focused on true preconditions and reserve final workflow
   completion gating for `Stop`.
 - Capture richer tool metadata as Claude Code hook payloads evolve, especially
-  command outcomes and more precise multi-path edits.
+  more precise multi-path edits and richer tool response details.
 - Make the saved per-session report easier to hand off into `cldc explain` and
   `cldc fix` flows.
 - Improve claim plumbing so external CI and review systems can append explicit
@@ -522,7 +524,8 @@ Preset rules merge alongside your own rules. Duplicate rule IDs fail the compile
 | --- | --- | --- |
 | `deny_write` | `paths` | Paths matching `paths` must not be written. |
 | `require_read` | `paths`, `before_paths` | Writing `paths` requires a prior read matching `before_paths`. |
-| `require_command` | `commands`, `when_paths` | Writing `when_paths` requires at least one listed command to run. |
+| `require_command` | `commands`, `when_paths` | Writing `when_paths` requires at least one listed command to run, regardless of outcome. |
+| `require_command_success` | `commands`, `when_paths` | Writing `when_paths` requires at least one listed command to complete successfully. |
 | `forbid_command` | `commands` (optional `when_paths`) | The listed commands must not run; scoped to `when_paths` when provided, otherwise repo-wide. |
 | `couple_change` | `paths`, `when_paths` | Writing `paths` requires a companion write matching `when_paths`. |
 | `require_claim` | `claims`, `when_paths` | Writing `when_paths` requires at least one listed claim to be asserted. |
@@ -554,6 +557,10 @@ Runtime commands accept evidence three ways:
 # direct flags
 cldc check . --read docs/spec.md --write src/main.py --command "pytest -q" --claim qa-reviewed
 
+# outcome-aware command evidence
+cldc check . --write src/main.py --command-success "pytest -q"
+cldc check . --write src/main.py --command-failure "pytest -q"
+
 # JSON file
 cldc check . --events-file .cldc-events.json --json
 
@@ -562,6 +569,8 @@ cat .cldc-events.json | cldc check . --stdin-json --json
 ```
 
 Use `--claim` once per asserted claim; claims satisfy `require_claim` rules in the compiled policy.
+Use `--command-success` and `--command-failure` when the workflow needs to
+distinguish an attempted command from a confirmed successful one.
 
 Accepted payload shape:
 
@@ -570,11 +579,14 @@ Accepted payload shape:
   "read_paths": ["docs/spec.md"],
   "write_paths": ["src/main.py"],
   "commands": ["pytest -q"],
+  "command_results": [
+    {"command": "pytest -q", "outcome": "success"}
+  ],
   "claims": ["qa-reviewed"],
   "events": [
     {"kind": "read", "path": "docs/spec.md"},
     {"kind": "write", "path": "src/main.py"},
-    {"kind": "command", "command": "pytest -q"},
+    {"kind": "command", "command": "pytest -q", "outcome": "success"},
     {"kind": "claim", "claim": "qa-reviewed"}
   ]
 }

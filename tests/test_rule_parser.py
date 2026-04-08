@@ -142,6 +142,28 @@ def test_parse_rule_documents_accepts_forbid_command_without_when_paths(tmp_path
     assert parsed.rules[0].when_paths is None
 
 
+def test_parse_rule_documents_accepts_require_command_success_rule(tmp_path):
+    (tmp_path / "CLAUDE.md").write_text(
+        "```cldc\n"
+        "rules:\n"
+        "  - id: tests-pass\n"
+        "    kind: require_command_success\n"
+        "    when_paths: ['src/**']\n"
+        "    commands: ['pytest -q']\n"
+        "    message: Tests must pass before source changes are done.\n"
+        "```\n"
+    )
+
+    bundle = load_policy_sources(tmp_path)
+    parsed = parse_rule_documents(bundle)
+
+    assert len(parsed.rules) == 1
+    rule = parsed.rules[0]
+    assert rule.kind == "require_command_success"
+    assert rule.commands == ["pytest -q"]
+    assert rule.when_paths == ["src/**"]
+
+
 def test_parse_rule_documents_rejects_forbid_command_without_commands(tmp_path):
     (tmp_path / "CLAUDE.md").write_text(
         "```cldc\nrules:\n  - id: no-bad\n    kind: forbid_command\n    when_paths: ['src/**']\n    message: missing commands\n```\n"

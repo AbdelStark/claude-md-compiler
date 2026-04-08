@@ -8,6 +8,7 @@ restructured later.
 
 from cldc.runtime.evaluator import CheckReport, Violation, check_repo_policy
 from cldc.runtime.events import (
+    CommandResult,
     ExecutionInputs,
     load_execution_inputs,
     load_execution_inputs_file,
@@ -20,6 +21,7 @@ __all__ = [
     "FIX_PLAN_FORMAT_VERSION",
     "FIX_PLAN_SCHEMA",
     "CheckReport",
+    "CommandResult",
     "ExecutionInputs",
     "Violation",
     "build_fix_plan",

@@ -92,7 +92,7 @@ def _files_to_inspect(violation: dict[str, Any]) -> list[str]:
 
 
 def _suggested_commands(violation: dict[str, Any]) -> list[str]:
-    if violation["kind"] == "require_command":
+    if violation["kind"] in {"require_command", "require_command_success"}:
         return _dedupe(violation.get("required_commands", []))
     return []
 
@@ -135,6 +135,12 @@ def _steps_for_violation(violation: dict[str, Any]) -> list[str]:
         return [
             f"Run the required validation command(s) before finishing work on {matched_display}: {required_command_display}.",
             "Review the command output and address any failures before marking the change complete.",
+            "Re-run `cldc check` or `cldc ci` after validation succeeds.",
+        ]
+    if violation["kind"] == "require_command_success":
+        return [
+            f"Run the required validation command(s) successfully before finishing work on {matched_display}: {required_command_display}.",
+            "Review the command output and fix any failures until at least one required command finishes successfully.",
             "Re-run `cldc check` or `cldc ci` after validation succeeds.",
         ]
     if violation["kind"] == "forbid_command":

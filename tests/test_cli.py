@@ -296,6 +296,76 @@ def test_cli_check_command_accepts_stdin_json(tmp_path):
     assert payload["violations"][0]["rule_id"] == "generated-lock"
 
 
+def test_cli_check_command_enforces_require_command_success_rule(tmp_path):
+    (tmp_path / "CLAUDE.md").write_text(
+        "```cldc\n"
+        "rules:\n"
+        "  - id: tests-pass\n"
+        "    kind: require_command_success\n"
+        "    when_paths: ['src/**']\n"
+        "    commands: ['pytest -q']\n"
+        "    message: Tests must pass before source changes are done.\n"
+        "```\n",
+        encoding="utf-8",
+    )
+
+    compile_result = subprocess.run(
+        [sys.executable, "-m", "cldc.cli.main", "compile", str(tmp_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert compile_result.returncode == 0, compile_result.stderr
+
+    failed_result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "cldc.cli.main",
+            "check",
+            str(tmp_path),
+            "--write",
+            "src/app.py",
+            "--command-failure",
+            "pytest -q",
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert failed_result.returncode == 0, failed_result.stderr
+    failed_payload = json.loads(failed_result.stdout)
+    assert failed_payload["decision"] == "warn"
+    assert failed_payload["violations"][0]["kind"] == "require_command_success"
+    assert failed_payload["inputs"]["commands"] == ["pytest -q"]
+
+    passing_result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "cldc.cli.main",
+            "check",
+            str(tmp_path),
+            "--write",
+            "src/app.py",
+            "--command-success",
+            "pytest -q",
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+    assert passing_result.returncode == 0, passing_result.stderr
+    passing_payload = json.loads(passing_result.stdout)
+    assert passing_payload["decision"] == "pass"
+    assert passing_payload["violations"] == []
+
+
 def test_cli_check_command_accepts_absolute_paths(tmp_path):
     target = tmp_path / "repo"
     _copy_fixture_repo(target)
@@ -1386,6 +1456,8 @@ def test_cli_help_exposes_version_and_absolute_path_support():
     assert "--stdin-json" in result.stdout
     assert "--output" in result.stdout
     assert "--claim" in result.stdout
+    assert "--command-success" in result.stdout
+    assert "--command-failure" in result.stdout
     assert "discovered" in result.stdout
 
     ci_help = subprocess.run(
@@ -1413,6 +1485,8 @@ def test_cli_help_exposes_version_and_absolute_path_support():
     assert "--stdin-report" in explain_help.stdout
     assert "--hook-report" in explain_help.stdout
     assert "--hook-session" in explain_help.stdout
+    assert "--command-success" in explain_help.stdout
+    assert "--command-failure" in explain_help.stdout
     assert "--format" in explain_help.stdout
     assert "--output" in explain_help.stdout
 
@@ -1428,6 +1502,8 @@ def test_cli_help_exposes_version_and_absolute_path_support():
     assert "--stdin-report" in fix_help.stdout
     assert "--hook-report" in fix_help.stdout
     assert "--hook-session" in fix_help.stdout
+    assert "--command-success" in fix_help.stdout
+    assert "--command-failure" in fix_help.stdout
     assert "--format" in fix_help.stdout
     assert "--events-file" in fix_help.stdout
     assert "--output" in fix_help.stdout

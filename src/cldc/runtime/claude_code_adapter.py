@@ -29,6 +29,7 @@ from typing import Any
 
 from cldc.errors import CldcError
 from cldc.runtime.evaluator import CheckReport, Violation, check_repo_policy
+from cldc.runtime.events import CommandResult
 
 STATE_ROOT_ENV = "CLDC_CLAUDE_STATE_DIR"
 WRITE_TOOL_NAMES = {"Edit", "MultiEdit", "Write"}
@@ -200,9 +201,7 @@ def load_session_state(repo_root: Path | str, session_id: str) -> ClaudeCodeSess
         if not isinstance(command, str) or not command.strip():
             raise ClaudeCodeAdapterError(f"session state field 'command_results[{index}].command' must be a string: {path}")
         if outcome not in {"success", "failure"}:
-            raise ClaudeCodeAdapterError(
-                f"session state field 'command_results[{index}].outcome' must be 'success' or 'failure': {path}"
-            )
+            raise ClaudeCodeAdapterError(f"session state field 'command_results[{index}].outcome' must be 'success' or 'failure': {path}")
         if tool_use_id is not None and not isinstance(tool_use_id, str):
             raise ClaudeCodeAdapterError(f"session state field 'command_results[{index}].tool_use_id' must be a string: {path}")
         if exit_code is not None and not isinstance(exit_code, int):
@@ -210,9 +209,7 @@ def load_session_state(repo_root: Path | str, session_id: str) -> ClaudeCodeSess
         if error is not None and not isinstance(error, str):
             raise ClaudeCodeAdapterError(f"session state field 'command_results[{index}].error' must be a string: {path}")
         if is_interrupt is not None and not isinstance(is_interrupt, bool):
-            raise ClaudeCodeAdapterError(
-                f"session state field 'command_results[{index}].is_interrupt' must be a boolean: {path}"
-            )
+            raise ClaudeCodeAdapterError(f"session state field 'command_results[{index}].is_interrupt' must be a boolean: {path}")
 
         command_results.append(
             ClaudeCodeCommandResult(
@@ -429,6 +426,10 @@ def _append_command_result(
     return [*results, result]
 
 
+def _command_results_for_evaluator(results: list[ClaudeCodeCommandResult]) -> list[CommandResult]:
+    return [CommandResult(command=result.command, outcome=result.outcome) for result in results]
+
+
 def _record_tool_use(state: ClaudeCodeSessionState, payload: dict[str, Any]) -> ClaudeCodeSessionState:
     tool_name = payload.get("tool_name")
     if not isinstance(tool_name, str) or not tool_name.strip():
@@ -495,6 +496,7 @@ def _run_check(
     read_paths: list[str],
     write_paths: list[str],
     commands: list[str],
+    command_results: list[ClaudeCodeCommandResult],
     claims: list[str],
 ) -> CheckReport:
     report = check_repo_policy(
@@ -502,6 +504,7 @@ def _run_check(
         read_paths=read_paths,
         write_paths=write_paths,
         commands=commands,
+        command_results=_command_results_for_evaluator(command_results),
         claims=claims,
     )
     _write_latest_report(repo_root, session_id, report)
@@ -518,11 +521,7 @@ def _first_lines_for_violations(violations: list[Violation], *, title: str) -> s
 
 
 def _pre_write_blocking_violations(report: CheckReport) -> list[Violation]:
-    return [
-        violation
-        for violation in report.violations
-        if violation.mode in BLOCKING_MODES and violation.kind in PRE_WRITE_BLOCK_KINDS
-    ]
+    return [violation for violation in report.violations if violation.mode in BLOCKING_MODES and violation.kind in PRE_WRITE_BLOCK_KINDS]
 
 
 def _blocking_violations(report: CheckReport) -> list[Violation]:
@@ -567,7 +566,7 @@ def _post_tool_failure_json_output(state: ClaudeCodeSessionState) -> str | None:
     lines = [f"cldc recorded failed command `{latest.command}`."]
     if latest.error:
         lines.append(latest.error)
-    lines.append("Only successful commands count toward `require_command` rules.")
+    lines.append("Only successful commands satisfy `require_command_success` rules.")
     return json.dumps(
         {
             "hookSpecificOutput": {
@@ -623,6 +622,7 @@ def record_claude_claim(
         read_paths=persisted.read_paths,
         write_paths=persisted.write_paths,
         commands=persisted.commands,
+        command_results=persisted.command_results,
         claims=persisted.claims,
     )
     return ClaudeCodeClaimReport(
@@ -666,6 +666,7 @@ def run_pre_tool_use(repo_root: Path | str, payload_text: str) -> HookRuntimeRes
         read_paths=state.read_paths,
         write_paths=[*state.write_paths, pending_write],
         commands=state.commands,
+        command_results=state.command_results,
         claims=state.claims,
     )
     violations = _pre_write_blocking_violations(report)
@@ -700,6 +701,7 @@ def run_post_tool_use(repo_root: Path | str, payload_text: str) -> HookRuntimeRe
         read_paths=updated.read_paths,
         write_paths=updated.write_paths,
         commands=updated.commands,
+        command_results=updated.command_results,
         claims=updated.claims,
     )
     if tool_name in READ_TOOL_NAMES:
@@ -722,6 +724,7 @@ def run_post_tool_use_failure(repo_root: Path | str, payload_text: str) -> HookR
         read_paths=updated.read_paths,
         write_paths=updated.write_paths,
         commands=updated.commands,
+        command_results=updated.command_results,
         claims=updated.claims,
     )
     return HookRuntimeResult(exit_code=0, stdout=_post_tool_failure_json_output(updated))
@@ -740,6 +743,7 @@ def run_stop(repo_root: Path | str, payload_text: str) -> HookRuntimeResult:
         read_paths=state.read_paths,
         write_paths=state.write_paths,
         commands=state.commands,
+        command_results=state.command_results,
         claims=state.claims,
     )
     if not _blocking_violations(report):

@@ -2,8 +2,8 @@
 
 `check_repo_policy` is the pure-function judge. It loads the compiled
 lockfile, validates its freshness against the live policy sources, normalizes
-the supplied evidence (read paths, write paths, commands, claims) into
-repo-relative POSIX form, and evaluates each rule. The result is a
+the supplied evidence (read paths, write paths, commands, command results,
+claims) into repo-relative POSIX form, and evaluates each rule. The result is a
 `CheckReport` carrying a structured `decision` (`pass`/`warn`/`block`),
 a list of `Violation`s with prescriptive next-step text, and metadata about
 the inputs that were considered.
@@ -30,7 +30,7 @@ from cldc.errors import LockfileError, RepoBoundaryError
 from cldc.ingest.discovery import LOCKFILE_PATH, discover_policy_repo
 from cldc.ingest.source_loader import load_policy_sources
 from cldc.parser.rule_parser import parse_rule_documents
-from cldc.runtime.events import EMPTY_EXECUTION_INPUTS, load_execution_inputs
+from cldc.runtime.events import EMPTY_EXECUTION_INPUTS, CommandResult, load_execution_inputs
 from cldc.runtime.report_schema import CHECK_REPORT_FORMAT_VERSION, CHECK_REPORT_SCHEMA
 
 logger = get_logger(__name__)
@@ -42,6 +42,7 @@ ALLOWED_RULE_KINDS = {
     "deny_write",
     "require_read",
     "require_command",
+    "require_command_success",
     "forbid_command",
     "couple_change",
     "require_claim",
@@ -141,6 +142,27 @@ def _normalize_commands(commands: list[str] | None) -> list[str]:
     return [command.strip() for command in (commands or []) if command.strip()]
 
 
+def _dedupe_preserving_order(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
+
+
+def _normalize_command_results(command_results: list[CommandResult] | None) -> list[CommandResult]:
+    normalized: list[CommandResult] = []
+    for result in command_results or []:
+        command = result.command.strip()
+        if not command:
+            continue
+        normalized.append(CommandResult(command=command, outcome=result.outcome))
+    return normalized
+
+
 def _matches_any(path: str, patterns: list[str] | None) -> bool:
     if not patterns:
         return False
@@ -155,6 +177,17 @@ def _matching_commands(commands: list[str], expected: list[str] | None) -> list[
     if not expected:
         return []
     return [command for command in commands if command in expected]
+
+
+def _matching_command_results(
+    command_results: list[CommandResult],
+    expected: list[str] | None,
+    *,
+    outcome: str,
+) -> list[str]:
+    if not expected:
+        return []
+    return [result.command for result in command_results if result.outcome == outcome and result.command in expected]
 
 
 def _matching_claims(claims: list[str], expected: list[str] | None) -> list[str]:
@@ -289,6 +322,11 @@ def _explain_violation(
             f"Write activity {path_list} triggered require_command rule '{rule_id}', but no required command matched {required_command_list}.",
             f"Run one of the required commands before finishing: {required_command_list}.",
         )
+    if kind == "require_command_success":
+        return (
+            f"Write activity {path_list} triggered require_command_success rule '{rule_id}', but no required successful command matched {required_command_list}.",
+            f"Run one of the required commands successfully before finishing: {required_command_list}.",
+        )
     if kind == "forbid_command":
         forbidden_list = _join_for_humans(list(rule.get("commands") or []))
         if matched_paths:
@@ -386,6 +424,7 @@ def _evaluate_rule(
     read_paths: list[str],
     write_paths: list[str],
     commands: list[str],
+    command_results: list[CommandResult],
     claims: list[str],
 ) -> Violation | None:
     kind = rule.get("kind")
@@ -465,7 +504,11 @@ def _evaluate_rule(
     triggered_paths = _matching_paths(write_paths, rule.get("when_paths"))
     if not triggered_paths:
         return None
-    matched_commands = _matching_commands(commands, rule.get("commands"))
+    matched_commands = (
+        _matching_command_results(command_results, rule.get("commands"), outcome="success")
+        if kind == "require_command_success"
+        else _matching_commands(commands, rule.get("commands"))
+    )
     if matched_commands:
         return None
     return _build_violation(
@@ -482,6 +525,7 @@ def check_repo_policy(
     read_paths: list[str] | None = None,
     write_paths: list[str] | None = None,
     commands: list[str] | None = None,
+    command_results: list[CommandResult] | None = None,
     claims: list[str] | None = None,
     event_payload: dict[str, Any] | None = None,
 ) -> CheckReport:
@@ -499,7 +543,16 @@ def check_repo_policy(
     event_inputs = load_execution_inputs(event_payload) if event_payload is not None else EMPTY_EXECUTION_INPUTS
     normalized_reads = _normalize_paths([*(read_paths or []), *event_inputs.read_paths], repo_root=root)
     normalized_writes = _normalize_paths([*(write_paths or []), *event_inputs.write_paths], repo_root=root)
-    normalized_commands = _normalize_commands([*(commands or []), *event_inputs.commands])
+    normalized_command_results = _normalize_command_results([*(command_results or []), *event_inputs.command_results])
+    normalized_commands = _dedupe_preserving_order(
+        _normalize_commands(
+            [
+                *(commands or []),
+                *event_inputs.commands,
+                *(result.command for result in normalized_command_results),
+            ]
+        )
+    )
     normalized_claims = _normalize_commands([*(claims or []), *event_inputs.claims])
 
     violations: list[Violation] = []
@@ -512,6 +565,7 @@ def check_repo_policy(
             read_paths=normalized_reads,
             write_paths=normalized_writes,
             commands=normalized_commands,
+            command_results=normalized_command_results,
             claims=normalized_claims,
         )
         if violation:

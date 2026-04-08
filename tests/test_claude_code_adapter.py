@@ -70,6 +70,24 @@ def _write_require_claim_block_repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
+def _write_require_command_success_repo(tmp_path: Path) -> Path:
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    (tmp_path / "CLAUDE.md").write_text(
+        "```cldc\n"
+        "rules:\n"
+        "  - id: tests-pass\n"
+        "    kind: require_command_success\n"
+        "    mode: block\n"
+        "    when_paths: ['src/**']\n"
+        "    commands: ['pytest -q']\n"
+        "    message: Tests must pass before source changes are done.\n"
+        "```\n",
+        encoding="utf-8",
+    )
+    compile_repo_policy(tmp_path)
+    return tmp_path
+
+
 def test_pre_tool_use_blocks_missing_blocking_read(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     repo = _write_require_read_block_repo(tmp_path / "repo")
     session_id = "session-pre-read"
@@ -89,15 +107,18 @@ def test_pre_tool_use_blocks_missing_blocking_read(monkeypatch: pytest.MonkeyPat
     assert blocked.stderr is not None
     assert "read-architecture-first" in blocked.stderr
 
-    assert run_post_tool_use(
-        repo,
-        _payload(
-            session_id=session_id,
-            tool_name="Read",
-            tool_input={"file_path": "docs/rfcs/0001.md"},
-            tool_response={"success": True},
-        ),
-    ).exit_code == 0
+    assert (
+        run_post_tool_use(
+            repo,
+            _payload(
+                session_id=session_id,
+                tool_name="Read",
+                tool_input={"file_path": "docs/rfcs/0001.md"},
+                tool_response={"success": True},
+            ),
+        ).exit_code
+        == 0
+    )
 
     allowed = run_pre_tool_use(
         repo,
@@ -117,15 +138,18 @@ def test_stop_blocks_until_required_claim_is_recorded(monkeypatch: pytest.Monkey
     monkeypatch.setenv("CLDC_CLAUDE_STATE_DIR", str(tmp_path / "adapter-state"))
 
     assert run_session_start(repo, _payload(session_id=session_id)).exit_code == 0
-    assert run_post_tool_use(
-        repo,
-        _payload(
-            session_id=session_id,
-            tool_name="Write",
-            tool_input={"file_path": "src/app.py", "content": "print('hi')"},
-            tool_response={"success": True},
-        ),
-    ).exit_code == 0
+    assert (
+        run_post_tool_use(
+            repo,
+            _payload(
+                session_id=session_id,
+                tool_name="Write",
+                tool_input={"file_path": "src/app.py", "content": "print('hi')"},
+                tool_response={"success": True},
+            ),
+        ).exit_code
+        == 0
+    )
 
     blocked = run_stop(
         repo,
@@ -189,24 +213,30 @@ def test_post_tool_use_records_session_evidence_and_latest_report(monkeypatch: p
     assert post_write_payload["hookSpecificOutput"]["hookEventName"] == "PostToolUse"
     assert "run-tests" in post_write_payload["hookSpecificOutput"]["additionalContext"]
 
-    assert run_post_tool_use(
-        repo,
-        _payload(
-            session_id=session_id,
-            tool_name="Bash",
-            tool_input={"command": "pytest -q"},
-            tool_response={"success": True},
-        ),
-    ).exit_code == 0
-    assert run_post_tool_use(
-        repo,
-        _payload(
-            session_id=session_id,
-            tool_name="Read",
-            tool_input={"file_path": "docs/rfcs/CLDC-0006-validator-engine.md"},
-            tool_response={"success": True},
-        ),
-    ).exit_code == 0
+    assert (
+        run_post_tool_use(
+            repo,
+            _payload(
+                session_id=session_id,
+                tool_name="Bash",
+                tool_input={"command": "pytest -q"},
+                tool_response={"success": True},
+            ),
+        ).exit_code
+        == 0
+    )
+    assert (
+        run_post_tool_use(
+            repo,
+            _payload(
+                session_id=session_id,
+                tool_name="Read",
+                tool_input={"file_path": "docs/rfcs/CLDC-0006-validator-engine.md"},
+                tool_response={"success": True},
+            ),
+        ).exit_code
+        == 0
+    )
 
     state = ensure_session_state(repo, session_id)
     assert state.write_paths == ["src/main.py"]
@@ -230,9 +260,72 @@ def test_post_tool_use_records_session_evidence_and_latest_report(monkeypatch: p
     assert persisted.commands == ["pytest -q"]
 
 
-def test_post_tool_use_failure_records_failed_command_and_latest_report(
+def test_adapter_require_command_success_distinguishes_failed_and_successful_commands(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    repo = _write_require_command_success_repo(tmp_path / "repo")
+    session_id = "session-command-success"
+    monkeypatch.setenv("CLDC_CLAUDE_STATE_DIR", str(tmp_path / "adapter-state"))
+
+    assert run_session_start(repo, _payload(session_id=session_id)).exit_code == 0
+    assert (
+        run_post_tool_use(
+            repo,
+            _payload(
+                session_id=session_id,
+                tool_name="Write",
+                tool_input={"file_path": "src/app.py", "content": "print('hi')"},
+                tool_response={"success": True},
+            ),
+        ).exit_code
+        == 0
+    )
+
+    failed = run_post_tool_use_failure(
+        repo,
+        _payload(
+            session_id=session_id,
+            tool_name="Bash",
+            tool_input={"command": "pytest -q"},
+            error="Command exited with non-zero status code 1",
+        ),
+    )
+    assert failed.exit_code == 0
+    blocked = run_stop(
+        repo,
+        _payload(
+            session_id=session_id,
+            stop_hook_active=False,
+            last_assistant_message="Done.",
+        ),
+    )
+    assert blocked.stdout is not None
+    blocked_payload = json.loads(blocked.stdout)
+    assert blocked_payload["decision"] == "block"
+    assert "tests-pass" in blocked_payload["reason"]
+
+    successful = run_post_tool_use(
+        repo,
+        _payload(
+            session_id=session_id,
+            tool_name="Bash",
+            tool_input={"command": "pytest -q"},
+            tool_response={"success": True},
+        ),
+    )
+    assert successful.exit_code == 0
+    unblocked = run_stop(
+        repo,
+        _payload(
+            session_id=session_id,
+            stop_hook_active=False,
+            last_assistant_message="Done.",
+        ),
+    )
+    assert unblocked.stdout is None
+
+
+def test_post_tool_use_failure_records_failed_command_and_latest_report(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     fixture = Path(__file__).parent / "fixtures" / "repo_a"
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -246,15 +339,18 @@ def test_post_tool_use_failure_records_failed_command_and_latest_report(
     session_id = "session-failure"
     monkeypatch.setenv("CLDC_CLAUDE_STATE_DIR", str(tmp_path / "adapter-state"))
     assert run_session_start(repo, _payload(session_id=session_id)).exit_code == 0
-    assert run_post_tool_use(
-        repo,
-        _payload(
-            session_id=session_id,
-            tool_name="Write",
-            tool_input={"file_path": "src/main.py", "content": "print('hi')"},
-            tool_response={"success": True},
-        ),
-    ).exit_code == 0
+    assert (
+        run_post_tool_use(
+            repo,
+            _payload(
+                session_id=session_id,
+                tool_name="Write",
+                tool_input={"file_path": "src/main.py", "content": "print('hi')"},
+                tool_response={"success": True},
+            ),
+        ).exit_code
+        == 0
+    )
 
     failed = run_post_tool_use_failure(
         repo,
@@ -285,9 +381,7 @@ def test_post_tool_use_failure_records_failed_command_and_latest_report(
     assert latest_report["violations"][0]["rule_id"] == "must-read-rfc"
 
 
-def test_resolve_session_report_path_falls_back_to_latest_saved_report(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_resolve_session_report_path_falls_back_to_latest_saved_report(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     fixture = Path(__file__).parent / "fixtures" / "repo_a"
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -301,27 +395,33 @@ def test_resolve_session_report_path_falls_back_to_latest_saved_report(
     monkeypatch.setenv("CLDC_CLAUDE_STATE_DIR", str(tmp_path / "adapter-state"))
 
     assert run_session_start(repo, _payload(session_id="session-a")).exit_code == 0
-    assert run_post_tool_use(
-        repo,
-        _payload(
-            session_id="session-a",
-            tool_name="Write",
-            tool_input={"file_path": "src/main.py", "content": "print('a')"},
-            tool_response={"success": True},
-        ),
-    ).exit_code == 0
+    assert (
+        run_post_tool_use(
+            repo,
+            _payload(
+                session_id="session-a",
+                tool_name="Write",
+                tool_input={"file_path": "src/main.py", "content": "print('a')"},
+                tool_response={"success": True},
+            ),
+        ).exit_code
+        == 0
+    )
     report_a = resolve_session_report_path(repo, session_id="session-a")
 
     assert run_session_start(repo, _payload(session_id="session-b")).exit_code == 0
-    assert run_post_tool_use(
-        repo,
-        _payload(
-            session_id="session-b",
-            tool_name="Write",
-            tool_input={"file_path": "src/main.py", "content": "print('b')"},
-            tool_response={"success": True},
-        ),
-    ).exit_code == 0
+    assert (
+        run_post_tool_use(
+            repo,
+            _payload(
+                session_id="session-b",
+                tool_name="Write",
+                tool_input={"file_path": "src/main.py", "content": "print('b')"},
+                tool_response={"success": True},
+            ),
+        ).exit_code
+        == 0
+    )
     assert run_session_end(repo, _payload(session_id="session-b")).exit_code == 0
     latest_report = resolve_session_report_path(repo)
 

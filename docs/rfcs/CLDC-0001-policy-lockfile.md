@@ -89,13 +89,13 @@ Each entry is the `to_dict()` of a `RuleDefinition` (see
 | Key                | Type                          | Notes                                                                                |
 |--------------------|-------------------------------|--------------------------------------------------------------------------------------|
 | `id`               | string                        | Unique across the whole lockfile. Duplicate IDs are a hard parse error.              |
-| `kind`             | string                        | One of `deny_write`, `require_read`, `require_command`, `couple_change`, `require_claim`. |
+| `kind`             | string                        | One of `deny_write`, `require_read`, `require_command`, `require_command_success`, `couple_change`, `require_claim`. |
 | `message`          | string                        | Non-empty human-readable description.                                                |
 | `mode`             | string \| null                | One of `observe`, `warn`, `block`, `fix`, or null to inherit `default_mode`.         |
 | `paths`            | array of strings \| null      | Required for `deny_write`, `require_read`, `couple_change`.                          |
 | `before_paths`     | array of strings \| null      | Required for `require_read`.                                                         |
-| `when_paths`       | array of strings \| null      | Required for `require_command`, `couple_change`, `require_claim`.                    |
-| `commands`         | array of strings \| null      | Required for `require_command`.                                                      |
+| `when_paths`       | array of strings \| null      | Required for `require_command`, `require_command_success`, `couple_change`, `require_claim`.                    |
+| `commands`         | array of strings \| null      | Required for `require_command` and `require_command_success`.                                                      |
 | `claims`           | array of strings \| null      | Required for `require_claim` (see CLDC-0004).                                        |
 | `source_path`      | string \| null                | Provenance: which source produced this rule.                                         |
 | `source_block_id`  | string \| null                | Provenance for inline blocks and presets.                                            |

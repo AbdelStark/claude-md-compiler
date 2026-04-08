@@ -99,10 +99,10 @@ Each entry in `violations[]` is the result of `Violation.to_dict()` in
 | `explanation`        | string           | One-sentence explanation derived from `_explain_violation`.                             |
 | `recommended_action` | string           | One-sentence remediation hint derived from `_explain_violation`.                        |
 | `matched_paths`      | array of strings | The input paths that triggered this rule.                                               |
-| `matched_commands`   | array of strings | The input commands that satisfied a `require_command` rule. Empty when none.            |
+| `matched_commands`   | array of strings | The input commands that satisfied a `require_command` or `require_command_success` rule. Empty when none.            |
 | `matched_claims`     | array of strings | The input claims that satisfied a `require_claim` rule. Empty when none.                |
 | `required_paths`     | array of strings | The patterns the rule requires (`before_paths` or `when_paths`, depending on kind).     |
-| `required_commands`  | array of strings | The commands the rule requires, for `require_command`.                                  |
+| `required_commands`  | array of strings | The commands the rule requires, for `require_command` and `require_command_success`.                                  |
 | `required_claims`    | array of strings | The claims the rule requires, for `require_claim` (see CLDC-0004).                      |
 | `source_path`        | string \| null   | Provenance: which source produced the rule.                                             |
 | `source_block_id`    | string \| null   | Provenance: inline block or preset block id.                                            |

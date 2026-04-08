@@ -144,9 +144,11 @@ Design intent:
 - `PostToolUse` records successful evidence and returns JSON hook output so
   Claude actually sees workflow feedback.
 - `PostToolUseFailure` records failed commands separately so unsuccessful
-  validation runs do not accidentally satisfy `require_command`.
+  validation runs can be distinguished from successful ones, especially for
+  `require_command_success`.
 - `Stop` is the completion gate for session-level invariants such as
-  `couple_change`, `require_command`, and `require_claim`.
+  `couple_change`, `require_command`, `require_command_success`, and
+  `require_claim`.
 - Claims remain explicit because Claude Code does not emit a native claim
   event; a human, harness, or CI system appends them through `cldc hook claim`
   or `record_claude_claim(...)`.
@@ -176,7 +178,8 @@ and are added incrementally as the contract surface stabilizes.
 | --- | --- | --- |
 | `deny_write` | `paths` | Paths matching `paths` must not be written. |
 | `require_read` | `paths`, `before_paths` | Writing `paths` requires a prior read matching `before_paths`. |
-| `require_command` | `commands`, `when_paths` | Writing `when_paths` requires at least one listed command to run. |
+| `require_command` | `commands`, `when_paths` | Writing `when_paths` requires at least one listed command to run, regardless of outcome. |
+| `require_command_success` | `commands`, `when_paths` | Writing `when_paths` requires at least one listed command to finish successfully. |
 | `forbid_command` | `commands` (optional `when_paths`) | The listed commands must not run; scoped to `when_paths` when provided, otherwise global to the repo. |
 | `couple_change` | `paths`, `when_paths` | Writing `paths` requires a companion write matching `when_paths`. |
 | `require_claim` | `claims`, `when_paths` | Writing `when_paths` requires at least one listed claim to be asserted. |

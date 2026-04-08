@@ -6,7 +6,7 @@ import pytest
 
 from cldc.compiler.policy_compiler import compile_repo_policy
 from cldc.runtime.evaluator import check_repo_policy
-from cldc.runtime.events import load_execution_inputs
+from cldc.runtime.events import CommandResult, load_execution_inputs
 from cldc.runtime.git import collect_git_write_paths
 from cldc.runtime.remediation import FIX_PLAN_FORMAT_VERSION, FIX_PLAN_SCHEMA, build_fix_plan, render_fix_plan
 from cldc.runtime.report_schema import CHECK_REPORT_FORMAT_VERSION, CHECK_REPORT_SCHEMA
@@ -70,6 +70,89 @@ def test_check_repo_policy_passes_when_required_inputs_are_present(compiled_repo
     assert report.summary == "Policy check passed with no violations."
     assert report.next_action is None
     assert report.violations == []
+
+
+def _write_require_command_success_repo(tmp_path):
+    (tmp_path / "CLAUDE.md").write_text(
+        "```cldc\n"
+        "rules:\n"
+        "  - id: test-pass-required\n"
+        "    kind: require_command_success\n"
+        "    when_paths: ['src/**']\n"
+        "    commands: ['pytest -q']\n"
+        "    message: Tests must pass before source changes are done.\n"
+        "```\n",
+        encoding="utf-8",
+    )
+    compile_repo_policy(tmp_path)
+
+
+def test_check_repo_policy_enforces_require_command_success_with_failed_command_result(tmp_path):
+    _write_require_command_success_repo(tmp_path)
+
+    report = check_repo_policy(
+        tmp_path,
+        write_paths=["src/app.py"],
+        command_results=[CommandResult(command="pytest -q", outcome="failure")],
+    )
+
+    assert report.decision == "warn"
+    assert report.violation_count == 1
+    violation = report.violations[0]
+    assert violation.rule_id == "test-pass-required"
+    assert violation.kind == "require_command_success"
+    assert violation.required_commands == ["pytest -q"]
+    assert violation.recommended_action == "Run one of the required commands successfully before finishing: pytest -q."
+    assert report.inputs["commands"] == ["pytest -q"]
+
+
+def test_check_repo_policy_passes_require_command_success_with_successful_command_result(tmp_path):
+    _write_require_command_success_repo(tmp_path)
+
+    report = check_repo_policy(
+        tmp_path,
+        write_paths=["src/app.py"],
+        command_results=[CommandResult(command="pytest -q", outcome="success")],
+    )
+
+    assert report.decision == "pass"
+    assert report.violations == []
+
+
+def test_build_fix_plan_for_require_command_success_suggests_commands(tmp_path):
+    _write_require_command_success_repo(tmp_path)
+
+    report = check_repo_policy(
+        tmp_path,
+        write_paths=["src/app.py"],
+        command_results=[CommandResult(command="pytest -q", outcome="failure")],
+    )
+    plan = build_fix_plan(report.to_dict())
+
+    assert plan["decision"] == "warn"
+    assert plan["remediation_count"] == 1
+    remediation = plan["remediations"][0]
+    assert remediation["kind"] == "require_command_success"
+    assert remediation["suggested_commands"] == ["pytest -q"]
+    assert "successfully" in remediation["steps"][0]
+
+
+def test_check_repo_policy_merges_generic_and_outcome_aware_command_evidence(tmp_path):
+    _write_require_command_success_repo(tmp_path)
+
+    report = check_repo_policy(
+        tmp_path,
+        write_paths=["src/app.py"],
+        commands=["ruff check ."],
+        event_payload={
+            "events": [
+                {"kind": "command", "command": "pytest -q", "outcome": "success"},
+            ]
+        },
+    )
+
+    assert report.decision == "pass"
+    assert report.inputs["commands"] == ["ruff check .", "pytest -q"]
 
 
 def test_build_fix_plan_emits_versioned_remediations_for_violations(compiled_repo):

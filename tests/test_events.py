@@ -16,6 +16,7 @@ import pytest
 from cldc.errors import EvidenceError
 from cldc.runtime.events import (
     EMPTY_EXECUTION_INPUTS,
+    CommandResult,
     ExecutionInputs,
     load_execution_inputs,
     load_execution_inputs_file,
@@ -27,8 +28,20 @@ from cldc.runtime.events import (
 
 class TestExecutionInputs:
     def test_merged_with_concatenates_in_order_without_dedup(self):
-        first = ExecutionInputs(read_paths=["a"], write_paths=["b"], commands=["c"], claims=["d"])
-        second = ExecutionInputs(read_paths=["a", "e"], write_paths=["b"], commands=["c"], claims=["d"])
+        first = ExecutionInputs(
+            read_paths=["a"],
+            write_paths=["b"],
+            commands=["c"],
+            claims=["d"],
+            command_results=[CommandResult(command="c", outcome="success")],
+        )
+        second = ExecutionInputs(
+            read_paths=["a", "e"],
+            write_paths=["b"],
+            commands=["c"],
+            claims=["d"],
+            command_results=[CommandResult(command="c", outcome="failure")],
+        )
 
         merged = first.merged_with(second)
 
@@ -37,6 +50,10 @@ class TestExecutionInputs:
         assert merged.write_paths == ["b", "b"]
         assert merged.commands == ["c", "c"]
         assert merged.claims == ["d", "d"]
+        assert merged.command_results == [
+            CommandResult(command="c", outcome="success"),
+            CommandResult(command="c", outcome="failure"),
+        ]
 
     def test_empty_singleton_round_trips_through_merged_with(self):
         merged = EMPTY_EXECUTION_INPUTS.merged_with(EMPTY_EXECUTION_INPUTS)
@@ -64,6 +81,22 @@ class TestLoadExecutionInputs:
         assert inputs.write_paths == ["src/main.py"]
         assert inputs.commands == ["pytest"]
         assert inputs.claims == ["ci-green"]
+        assert inputs.command_results == []
+
+    def test_supports_bulk_command_results(self):
+        payload = {
+            "command_results": [
+                {"command": "pytest -q", "outcome": "success"},
+                {"command": "ruff check .", "outcome": "failure"},
+            ]
+        }
+
+        inputs = load_execution_inputs(payload)
+
+        assert inputs.command_results == [
+            CommandResult(command="pytest -q", outcome="success"),
+            CommandResult(command="ruff check .", outcome="failure"),
+        ]
 
     def test_merges_bulk_lists_and_events(self):
         payload = {
@@ -71,6 +104,7 @@ class TestLoadExecutionInputs:
             "events": [
                 {"kind": "read", "path": "docs/extra.md"},
                 {"kind": "write", "path": "src/util.py"},
+                {"kind": "command", "command": "pytest -q", "outcome": "success"},
             ],
         }
 
@@ -78,6 +112,8 @@ class TestLoadExecutionInputs:
 
         assert inputs.read_paths == ["docs/spec.md", "docs/extra.md"]
         assert inputs.write_paths == ["src/util.py"]
+        assert inputs.commands == ["pytest -q"]
+        assert inputs.command_results == [CommandResult(command="pytest -q", outcome="success")]
 
     def test_rejects_non_dict_payload(self):
         with pytest.raises(EvidenceError, match="must be a JSON object"):
@@ -102,6 +138,10 @@ class TestLoadExecutionInputs:
     def test_rejects_event_missing_command_field(self):
         with pytest.raises(EvidenceError, match="kind 'command' requires a string 'command'"):
             load_execution_inputs({"events": [{"kind": "command"}]})
+
+    def test_rejects_invalid_command_result_outcome(self):
+        with pytest.raises(EvidenceError, match="must be one of: failure, success"):
+            load_execution_inputs({"command_results": [{"command": "pytest -q", "outcome": "maybe"}]})
 
     def test_rejects_event_missing_claim_field(self):
         with pytest.raises(EvidenceError, match="kind 'claim' requires a string 'claim'"):

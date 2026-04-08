@@ -36,7 +36,13 @@ from cldc.runtime.claude_code_adapter import (
     run_stop,
 )
 from cldc.runtime.evaluator import check_repo_policy
-from cldc.runtime.events import EMPTY_EXECUTION_INPUTS, load_execution_inputs_file, load_execution_inputs_text
+from cldc.runtime.events import (
+    EMPTY_EXECUTION_INPUTS,
+    CommandResult,
+    ExecutionInputs,
+    load_execution_inputs_file,
+    load_execution_inputs_text,
+)
 from cldc.runtime.git import collect_git_write_paths
 from cldc.runtime.hooks import (
     INSTALLABLE_HOOK_KINDS,
@@ -71,6 +77,20 @@ def _add_runtime_input_flags(parser: argparse.ArgumentParser, *, include_write: 
         )
     parser.add_argument(
         "--command", action="append", default=[], dest="commands", help="Executed command string; repeat for multiple commands"
+    )
+    parser.add_argument(
+        "--command-success",
+        action="append",
+        default=[],
+        dest="command_successes",
+        help="Executed command that completed successfully; repeat for multiple commands",
+    )
+    parser.add_argument(
+        "--command-failure",
+        action="append",
+        default=[],
+        dest="command_failures",
+        help="Executed command that failed; repeat for multiple commands",
     )
     parser.add_argument(
         "--claim",
@@ -505,13 +525,24 @@ def _render_check_result(report, json_output: bool, *, git_metadata: dict[str, o
     return "\n".join(lines)
 
 
-def _load_cli_event_payload(args) -> dict[str, list[str]] | None:
+def _load_cli_event_payload(args) -> dict[str, object] | None:
     merged = EMPTY_EXECUTION_INPUTS
 
     if getattr(args, "events_file", None):
         merged = merged.merged_with(load_execution_inputs_file(args.events_file))
     if getattr(args, "stdin_json", False):
         merged = merged.merged_with(load_execution_inputs_text(sys.stdin.read(), source="stdin"))
+    explicit_inputs = ExecutionInputs(
+        read_paths=[],
+        write_paths=[],
+        commands=[],
+        claims=[],
+        command_results=[
+            *(CommandResult(command=command, outcome="success") for command in (getattr(args, "command_successes", []) or [])),
+            *(CommandResult(command=command, outcome="failure") for command in (getattr(args, "command_failures", []) or [])),
+        ],
+    )
+    merged = explicit_inputs.merged_with(merged)
 
     if merged == EMPTY_EXECUTION_INPUTS:
         return None
@@ -520,6 +551,7 @@ def _load_cli_event_payload(args) -> dict[str, list[str]] | None:
         "write_paths": merged.write_paths,
         "commands": merged.commands,
         "claims": merged.claims,
+        "command_results": [result.to_dict() for result in merged.command_results],
     }
 
 
@@ -528,6 +560,8 @@ def _has_runtime_inputs(args) -> bool:
         getattr(args, "read_paths", None)
         or getattr(args, "write_paths", None)
         or getattr(args, "commands", None)
+        or getattr(args, "command_successes", None)
+        or getattr(args, "command_failures", None)
         or getattr(args, "claims", None)
         or getattr(args, "events_file", None)
         or getattr(args, "stdin_json", False)

@@ -69,7 +69,7 @@ as `[]`, never omitted.
 | `message`            | string           | The source violation's `message`.                                                           |
 | `why`                | string           | The source violation's `explanation`.                                                       |
 | `recommended_action` | string           | The source violation's `recommended_action`.                                                |
-| `suggested_commands` | array of strings | Deduped `required_commands` for `require_command`, otherwise `[]`.                          |
+| `suggested_commands` | array of strings | Deduped `required_commands` for `require_command` and `require_command_success`, otherwise `[]`.                          |
 | `suggested_claims`   | array of strings | Deduped `required_claims` for `require_claim` (CLDC-0004), otherwise `[]`.                  |
 | `files_to_inspect`   | array of strings | Deduped concatenation of `source_path`, `matched_paths`, `required_paths`. May be empty.    |
 | `steps`              | array of strings | 2-3 actionable steps derived from `_steps_for_violation`.                                   |
