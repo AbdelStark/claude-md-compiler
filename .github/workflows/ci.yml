@@ -127,8 +127,16 @@ jobs:
       - name: Sync project
         run: uv sync --locked
 
+      - name: Export audit requirements
+        # `pip-audit` treats the editable root project as a dependency
+        # collection error under `--strict`, and it may also fail briefly
+        # after a release cut if the just-tagged package version has not
+        # propagated across PyPI yet. Audit the resolved third-party lockfile
+        # contents instead of the editable checkout.
+        run: uv export --frozen --all-groups --no-editable --no-emit-project --output-file audit-requirements.txt > /dev/null
+
       - name: Run pip-audit
-        run: uv run --with 'pip-audit>=2.7' pip-audit --strict --progress-spinner off
+        run: uv run --with 'pip-audit>=2.7' pip-audit --strict --progress-spinner off -r audit-requirements.txt
 
   package:
     name: Package smoke test
