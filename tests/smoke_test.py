@@ -32,6 +32,7 @@ def main() -> int:
     claude_hook = _run("cldc", "hook", "generate", "claude-code")
     assert "SessionStart" in claude_hook, "claude-code hook snippet should declare a SessionStart hook"
     assert "PostToolUse" in claude_hook, "claude-code hook snippet should declare a PostToolUse hook"
+    assert "PostToolUseFailure" in claude_hook, "claude-code hook snippet should declare a PostToolUseFailure hook"
     assert "Stop" in claude_hook, "claude-code hook snippet should declare a Stop hook"
 
     return 0

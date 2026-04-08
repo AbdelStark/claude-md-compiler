@@ -9,8 +9,8 @@ agent finishes work. It emits two complementary hook artifacts:
 * a `.claude/settings.json` snippet that wires `cldc` into Claude Code's
   hook lifecycle with a session-state adapter: `PreToolUse` blocks true
   preconditions before writes, `PostToolUse` records evidence and reports
-  workflow drift, and `Stop` blocks completion while blocking invariants
-  remain unmet.
+  workflow drift, `PostToolUseFailure` records failed commands, and `Stop`
+  blocks completion while blocking invariants remain unmet.
 
 Generators are pure functions that return string content; the installer
 functions are the only entry points that touch the filesystem, and they
@@ -133,6 +133,17 @@ _CLAUDE_SETTINGS_HOOK_TEMPLATE = {
                     {
                         "type": "command",
                         "command": ('cldc hook runtime claude-post-tool-use "$CLAUDE_PROJECT_DIR"'),
+                    }
+                ],
+            }
+        ],
+        "PostToolUseFailure": [
+            {
+                "matcher": "Bash",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": ('cldc hook runtime claude-post-tool-use-failure "$CLAUDE_PROJECT_DIR"'),
                     }
                 ],
             }

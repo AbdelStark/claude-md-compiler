@@ -42,8 +42,9 @@ Primary modules per layer:
   (`collect_git_write_paths`), `src/cldc/runtime/report_schema.py`
   (`CHECK_REPORT_SCHEMA`, `CHECK_REPORT_FORMAT_VERSION`), and
   `src/cldc/runtime/claude_code_adapter.py`
-  (`run_session_start`, `run_pre_tool_use`, `run_post_tool_use`, `run_stop`,
-  `run_session_end`, `record_claude_claim`).
+  (`run_session_start`, `run_pre_tool_use`, `run_post_tool_use`,
+  `run_post_tool_use_failure`, `run_stop`, `run_session_end`,
+  `record_claude_claim`, `resolve_session_report_path`).
 - Presets: `src/cldc/presets/loader.py` (`list_presets`, `load_preset`,
   `preset_path`, `PresetNotFoundError`, `PRESET_SOURCE_KIND`).
 - CLI: `src/cldc/cli/main.py` (argparse subparsers for `init`, `compile`,
@@ -127,6 +128,8 @@ run_session_start  --->  ~/.claude/cldc/projects/<repo-hash>/sessions/<session>.
         |
         +--> PostToolUse ---> run_post_tool_use  ---> append reads/writes/commands + save latest report
         |
+        +--> PostToolUseFailure ---> run_post_tool_use_failure ---> record failed commands
+        |
         +--> cldc hook claim / record_claude_claim ---> append explicit claims
         |
         +--> Stop        ---> run_stop           ---> emit block payload while blocking invariants remain
@@ -138,13 +141,18 @@ Design intent:
 
 - `PreToolUse` is reserved for true preconditions that must block before a
   write occurs, currently blocking `deny_write` and blocking `require_read`.
-- `PostToolUse` records successful evidence and surfaces concise workflow
-  feedback without stopping the tool flow.
+- `PostToolUse` records successful evidence and returns JSON hook output so
+  Claude actually sees workflow feedback.
+- `PostToolUseFailure` records failed commands separately so unsuccessful
+  validation runs do not accidentally satisfy `require_command`.
 - `Stop` is the completion gate for session-level invariants such as
   `couple_change`, `require_command`, and `require_claim`.
 - Claims remain explicit because Claude Code does not emit a native claim
   event; a human, harness, or CI system appends them through `cldc hook claim`
   or `record_claude_claim(...)`.
+- Saved hook reports remain available after `SessionEnd` and can be resolved
+  later through `resolve_session_report_path(...)`, which prefers the active
+  session report and otherwise falls back to the latest saved report.
 
 ## Schema contracts
 

@@ -27,7 +27,9 @@ from cldc.compiler.policy_compiler import compile_repo_policy, doctor_repo_polic
 from cldc.presets import list_presets, load_preset, preset_path
 from cldc.runtime.claude_code_adapter import (
     record_claude_claim,
+    resolve_session_report_path,
     run_post_tool_use,
+    run_post_tool_use_failure,
     run_pre_tool_use,
     run_session_end,
     run_session_start,
@@ -97,6 +99,17 @@ def _add_report_input_flags(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         dest="stdin_report",
         help="Load an existing JSON policy report from stdin and render it without re-running evaluation",
+    )
+    parser.add_argument(
+        "--hook-report",
+        action="store_true",
+        dest="hook_report",
+        help="Load the latest saved Claude Code hook report for this repo instead of passing a report path",
+    )
+    parser.add_argument(
+        "--hook-session",
+        dest="hook_session",
+        help="Specific Claude Code session id whose saved hook report should be loaded (use with --hook-report)",
     )
     parser.add_argument(
         "--format",
@@ -334,6 +347,7 @@ def build_parser() -> argparse.ArgumentParser:
         "claude-session-start",
         "claude-pre-tool-use",
         "claude-post-tool-use",
+        "claude-post-tool-use-failure",
         "claude-stop",
         "claude-session-end",
     ):
@@ -520,21 +534,46 @@ def _has_runtime_inputs(args) -> bool:
     )
 
 
+def _load_saved_report_payload(args, *, command_name: str) -> dict[str, object] | None:
+    saved_report_sources = sum(
+        1
+        for present in (
+            bool(getattr(args, "report_file", None)),
+            bool(getattr(args, "stdin_report", False)),
+            bool(getattr(args, "hook_report", False)),
+        )
+        if present
+    )
+    if saved_report_sources > 1:
+        raise ValueError(
+            f"`cldc {command_name}` accepts only one saved report source: choose --report-file, --stdin-report, or --hook-report"
+        )
+    if getattr(args, "hook_session", None) and not getattr(args, "hook_report", False):
+        raise ValueError(f"`cldc {command_name}` requires --hook-report when --hook-session is provided")
+    if not saved_report_sources:
+        return None
+    if _has_runtime_inputs(args):
+        raise ValueError(
+            f"`cldc {command_name}` cannot combine saved report input with fresh runtime evidence; "
+            "use either --report-file/--stdin-report/--hook-report or the runtime evidence flags"
+        )
+
+    if getattr(args, "report_file", None):
+        return load_check_report_file(args.report_file)
+    if getattr(args, "stdin_report", False):
+        return load_check_report_text(sys.stdin.read(), source="stdin")
+
+    report_path = resolve_session_report_path(Path(args.repo), session_id=getattr(args, "hook_session", None))
+    return load_check_report_file(report_path)
+
+
 def _load_explain_payload(args) -> dict[str, object]:
-    if getattr(args, "report_file", None) and getattr(args, "stdin_report", False):
-        raise ValueError("`cldc explain` accepts only one saved report source: choose --report-file or --stdin-report")
     if getattr(args, "stdin_json", False) and getattr(args, "stdin_report", False):
         raise ValueError("`cldc explain` cannot consume both --stdin-json and --stdin-report from stdin in the same run")
 
-    if getattr(args, "report_file", None) or getattr(args, "stdin_report", False):
-        if _has_runtime_inputs(args):
-            raise ValueError(
-                "`cldc explain` cannot combine saved report input with fresh runtime evidence; "
-                "use either --report-file/--stdin-report or the runtime evidence flags"
-            )
-        if getattr(args, "report_file", None):
-            return load_check_report_file(args.report_file)
-        return load_check_report_text(sys.stdin.read(), source="stdin")
+    saved_report = _load_saved_report_payload(args, command_name="explain")
+    if saved_report is not None:
+        return saved_report
 
     report = check_repo_policy(
         Path(args.repo),
@@ -615,33 +654,22 @@ def _render_hook_claim(report, json_output: bool) -> str:
 
 
 def _load_fix_payload(args) -> dict[str, object]:
-    if getattr(args, "report_file", None) and getattr(args, "stdin_report", False):
-        raise ValueError("`cldc fix` accepts only one saved report source: choose --report-file or --stdin-report")
     if getattr(args, "stdin_json", False) and getattr(args, "stdin_report", False):
         raise ValueError("`cldc fix` cannot consume both --stdin-json and --stdin-report from stdin in the same run")
 
-    if getattr(args, "report_file", None) or getattr(args, "stdin_report", False):
-        if _has_runtime_inputs(args):
-            raise ValueError(
-                "`cldc fix` cannot combine saved report input with fresh runtime evidence; "
-                "use either --report-file/--stdin-report or the runtime evidence flags"
-            )
-        if getattr(args, "report_file", None):
-            report_payload = load_check_report_file(args.report_file)
-        else:
-            report_payload = load_check_report_text(sys.stdin.read(), source="stdin")
-    else:
-        report = check_repo_policy(
-            Path(args.repo),
-            read_paths=args.read_paths,
-            write_paths=args.write_paths,
-            commands=args.commands,
-            claims=args.claims,
-            event_payload=_load_cli_event_payload(args),
-        )
-        report_payload = _check_payload(report)
+    saved_report = _load_saved_report_payload(args, command_name="fix")
+    if saved_report is not None:
+        return build_fix_plan(saved_report)
 
-    return build_fix_plan(report_payload)
+    report = check_repo_policy(
+        Path(args.repo),
+        read_paths=args.read_paths,
+        write_paths=args.write_paths,
+        commands=args.commands,
+        claims=args.claims,
+        event_payload=_load_cli_event_payload(args),
+    )
+    return build_fix_plan(_check_payload(report))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -746,6 +774,8 @@ def main(argv: list[str] | None = None) -> int:
                     result = run_pre_tool_use(Path(args.repo), payload_text)
                 elif args.hook_runtime_action == "claude-post-tool-use":
                     result = run_post_tool_use(Path(args.repo), payload_text)
+                elif args.hook_runtime_action == "claude-post-tool-use-failure":
+                    result = run_post_tool_use_failure(Path(args.repo), payload_text)
                 elif args.hook_runtime_action == "claude-stop":
                     result = run_stop(Path(args.repo), payload_text)
                 elif args.hook_runtime_action == "claude-session-end":

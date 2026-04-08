@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from cldc.compiler.policy_compiler import compile_repo_policy
 from cldc.runtime.hooks import (
     CLAUDE_SETTINGS_PATH,
     GIT_PRE_COMMIT_HOOK_PATH,
@@ -48,7 +49,7 @@ def test_generate_claude_code_settings_returns_valid_json():
 
     payload = json.loads(artifact.content)
     assert "hooks" in payload
-    assert set(payload["hooks"]) == {"SessionStart", "PreToolUse", "PostToolUse", "Stop", "SessionEnd"}
+    assert set(payload["hooks"]) == {"SessionStart", "PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop", "SessionEnd"}
 
     pre_tool_use = payload["hooks"]["PreToolUse"]
     assert isinstance(pre_tool_use, list) and pre_tool_use
@@ -65,6 +66,10 @@ def test_generate_claude_code_settings_returns_valid_json():
     post_nested = post_matcher["hooks"][0]
     assert post_nested["type"] == "command"
     assert "cldc hook runtime claude-post-tool-use" in post_nested["command"]
+
+    post_failure_hooks = payload["hooks"]["PostToolUseFailure"]
+    assert post_failure_hooks[0]["hooks"][0]["type"] == "command"
+    assert "cldc hook runtime claude-post-tool-use-failure" in post_failure_hooks[0]["hooks"][0]["command"]
 
     stop_hooks = payload["hooks"]["Stop"]
     assert stop_hooks[0]["hooks"][0]["type"] == "command"
@@ -177,12 +182,15 @@ def test_cli_hook_generate_claude_code_json(tmp_path):
     assert payload["target_path"] == CLAUDE_SETTINGS_PATH
     inner = json.loads(payload["content"])
     assert "hooks" in inner
-    assert set(inner["hooks"]) == {"SessionStart", "PreToolUse", "PostToolUse", "Stop", "SessionEnd"}
+    assert set(inner["hooks"]) == {"SessionStart", "PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop", "SessionEnd"}
 
 
 def test_cli_hook_claim_appends_explicit_claim(tmp_path):
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
+    (repo_root / "CLAUDE.md").write_text("# repo\n", encoding="utf-8")
+    (repo_root / ".claude-compiler.yaml").write_text("rules: []\n", encoding="utf-8")
+    compile_repo_policy(repo_root)
     state_root = tmp_path / "claude-state"
 
     result = subprocess.run(

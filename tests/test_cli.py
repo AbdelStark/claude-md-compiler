@@ -1,9 +1,12 @@
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 import cldc
+from cldc.compiler.policy_compiler import compile_repo_policy
+from cldc.runtime.claude_code_adapter import run_post_tool_use, run_session_start
 from cldc.runtime.remediation import FIX_PLAN_FORMAT_VERSION, FIX_PLAN_SCHEMA
 from cldc.runtime.report_schema import CHECK_REPORT_FORMAT_VERSION, CHECK_REPORT_SCHEMA
 
@@ -43,6 +46,41 @@ def _init_git_repo(target: Path) -> None:
             cwd=target,
         )
         assert result.returncode == 0, result.stderr
+
+
+def _hook_payload(*, session_id: str, tool_name: str | None = None, tool_input: dict[str, object] | None = None, **extra: object) -> str:
+    payload: dict[str, object] = {
+        "session_id": session_id,
+        "transcript_path": "/tmp/transcript.jsonl",
+    }
+    if tool_name is not None:
+        payload["tool_name"] = tool_name
+    if tool_input is not None:
+        payload["tool_input"] = tool_input
+    payload.update(extra)
+    return json.dumps(payload)
+
+
+def _create_saved_hook_report(repo_root: Path, *, state_root: Path, session_id: str = "cli-hook-session") -> None:
+    compile_repo_policy(repo_root)
+    previous = os.environ.get("CLDC_CLAUDE_STATE_DIR")
+    os.environ["CLDC_CLAUDE_STATE_DIR"] = str(state_root)
+    try:
+        run_session_start(repo_root, _hook_payload(session_id=session_id))
+        run_post_tool_use(
+            repo_root,
+            _hook_payload(
+                session_id=session_id,
+                tool_name="Write",
+                tool_input={"file_path": "src/main.py", "content": "print('hi')"},
+                tool_response={"success": True},
+            ),
+        )
+    finally:
+        if previous is None:
+            os.environ.pop("CLDC_CLAUDE_STATE_DIR", None)
+        else:
+            os.environ["CLDC_CLAUDE_STATE_DIR"] = previous
 
 
 def test_cli_compile_command(tmp_path):
@@ -682,6 +720,34 @@ def test_cli_explain_command_accepts_legacy_unversioned_saved_report(tmp_path):
     assert payload["violations"][0]["rule_id"] == "generated-lock"
 
 
+def test_cli_explain_command_accepts_latest_hook_report(tmp_path):
+    target = tmp_path / "repo"
+    state_root = tmp_path / "claude-state"
+    _copy_fixture_repo(target)
+    _create_saved_hook_report(target, state_root=state_root)
+
+    explain_result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "cldc.cli.main",
+            "explain",
+            str(target),
+            "--hook-report",
+            "--format",
+            "markdown",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**PYTHONPATH_ENV, "CLDC_CLAUDE_STATE_DIR": str(state_root)},
+    )
+
+    assert explain_result.returncode == 0, explain_result.stderr
+    assert "# Policy Explanation" in explain_result.stdout
+    assert "run-tests" in explain_result.stdout
+
+
 def test_cli_fix_command_returns_versioned_json_plan(tmp_path):
     target = tmp_path / "repo"
     _copy_fixture_repo(target)
@@ -778,6 +844,58 @@ def test_cli_fix_command_renders_markdown_from_saved_report(tmp_path):
     assert "## Remediations" in fix_result.stdout
     assert "generated-lock" in fix_result.stdout
     assert "Suggested commands" not in fix_result.stdout
+
+
+def test_cli_fix_command_accepts_latest_hook_report(tmp_path):
+    target = tmp_path / "repo"
+    state_root = tmp_path / "claude-state"
+    _copy_fixture_repo(target)
+    _create_saved_hook_report(target, state_root=state_root)
+
+    fix_result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "cldc.cli.main",
+            "fix",
+            str(target),
+            "--hook-report",
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**PYTHONPATH_ENV, "CLDC_CLAUDE_STATE_DIR": str(state_root)},
+    )
+
+    assert fix_result.returncode == 0, fix_result.stderr
+    payload = json.loads(fix_result.stdout)
+    assert payload["decision"] == "warn"
+    assert payload["remediation_count"] == 2
+
+
+def test_cli_explain_command_rejects_hook_session_without_hook_report(tmp_path):
+    target = tmp_path / "repo"
+    _copy_fixture_repo(target)
+
+    explain_result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "cldc.cli.main",
+            "explain",
+            str(target),
+            "--hook-session",
+            "session-123",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=PYTHONPATH_ENV,
+    )
+
+    assert explain_result.returncode == 1
+    assert "--hook-report" in explain_result.stderr
 
 
 def test_cli_fix_command_rejects_mixed_saved_report_and_runtime_inputs(tmp_path):
@@ -1293,6 +1411,8 @@ def test_cli_help_exposes_version_and_absolute_path_support():
     assert explain_help.returncode == 0
     assert "--report-file" in explain_help.stdout
     assert "--stdin-report" in explain_help.stdout
+    assert "--hook-report" in explain_help.stdout
+    assert "--hook-session" in explain_help.stdout
     assert "--format" in explain_help.stdout
     assert "--output" in explain_help.stdout
 
@@ -1306,6 +1426,8 @@ def test_cli_help_exposes_version_and_absolute_path_support():
     assert fix_help.returncode == 0
     assert "--report-file" in fix_help.stdout
     assert "--stdin-report" in fix_help.stdout
+    assert "--hook-report" in fix_help.stdout
+    assert "--hook-session" in fix_help.stdout
     assert "--format" in fix_help.stdout
     assert "--events-file" in fix_help.stdout
     assert "--output" in fix_help.stdout

@@ -8,7 +8,9 @@ reuses `check_repo_policy` in three places:
 * `PreToolUse` blocks writes that violate true preconditions like
   `deny_write` or blocking `require_read`.
 * `PostToolUse` records successful evidence and surfaces concise warn/block
-  feedback without interrupting the tool flow.
+  feedback through Claude's JSON hook output without interrupting the tool flow.
+* `PostToolUseFailure` records failed command executions so session state keeps
+  success and failure outcomes distinct.
 * `Stop` blocks session completion while blocking workflow invariants remain
   unmet (`couple_change`, `require_command`, `require_claim`, etc.).
 
@@ -41,6 +43,21 @@ class ClaudeCodeAdapterError(CldcError):
 
 
 @dataclass(frozen=True)
+class ClaudeCodeCommandResult:
+    """One command execution outcome observed during a Claude Code session."""
+
+    command: str
+    outcome: str
+    tool_use_id: str | None
+    exit_code: int | None
+    error: str | None
+    is_interrupt: bool | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class ClaudeCodeSessionState:
     """Machine-local session evidence accumulated from Claude Code hooks."""
 
@@ -50,10 +67,13 @@ class ClaudeCodeSessionState:
     write_paths: list[str]
     commands: list[str]
     claims: list[str]
+    command_results: list[ClaudeCodeCommandResult]
     report_path: str
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        payload = asdict(self)
+        payload["command_results"] = [result.to_dict() for result in self.command_results]
+        return payload
 
 
 @dataclass(frozen=True)
@@ -116,6 +136,10 @@ def _active_session_path(repo_root: Path) -> Path:
     return _project_dir(repo_root) / "active-session.txt"
 
 
+def _reports_dir(repo_root: Path) -> Path:
+    return _project_dir(repo_root) / "reports"
+
+
 def _empty_state(repo_root: Path, session_id: str) -> ClaudeCodeSessionState:
     return ClaudeCodeSessionState(
         repo_root=str(repo_root),
@@ -124,6 +148,7 @@ def _empty_state(repo_root: Path, session_id: str) -> ClaudeCodeSessionState:
         write_paths=[],
         commands=[],
         claims=[],
+        command_results=[],
         report_path=str(_session_report_path(repo_root, session_id)),
     )
 
@@ -157,6 +182,49 @@ def load_session_state(repo_root: Path | str, session_id: str) -> ClaudeCodeSess
             raise ClaudeCodeAdapterError(f"session state field '{name}' must be a list of strings: {path}")
         return value
 
+    raw_command_results = payload.get("command_results", [])
+    if not isinstance(raw_command_results, list):
+        raise ClaudeCodeAdapterError(f"session state field 'command_results' must be a list: {path}")
+    command_results: list[ClaudeCodeCommandResult] = []
+    for index, item in enumerate(raw_command_results):
+        if not isinstance(item, dict):
+            raise ClaudeCodeAdapterError(f"session state field 'command_results[{index}]' must be an object: {path}")
+
+        command = item.get("command")
+        outcome = item.get("outcome")
+        tool_use_id = item.get("tool_use_id")
+        exit_code = item.get("exit_code")
+        error = item.get("error")
+        is_interrupt = item.get("is_interrupt")
+
+        if not isinstance(command, str) or not command.strip():
+            raise ClaudeCodeAdapterError(f"session state field 'command_results[{index}].command' must be a string: {path}")
+        if outcome not in {"success", "failure"}:
+            raise ClaudeCodeAdapterError(
+                f"session state field 'command_results[{index}].outcome' must be 'success' or 'failure': {path}"
+            )
+        if tool_use_id is not None and not isinstance(tool_use_id, str):
+            raise ClaudeCodeAdapterError(f"session state field 'command_results[{index}].tool_use_id' must be a string: {path}")
+        if exit_code is not None and not isinstance(exit_code, int):
+            raise ClaudeCodeAdapterError(f"session state field 'command_results[{index}].exit_code' must be an integer: {path}")
+        if error is not None and not isinstance(error, str):
+            raise ClaudeCodeAdapterError(f"session state field 'command_results[{index}].error' must be a string: {path}")
+        if is_interrupt is not None and not isinstance(is_interrupt, bool):
+            raise ClaudeCodeAdapterError(
+                f"session state field 'command_results[{index}].is_interrupt' must be a boolean: {path}"
+            )
+
+        command_results.append(
+            ClaudeCodeCommandResult(
+                command=command.strip(),
+                outcome=outcome,
+                tool_use_id=tool_use_id.strip() if isinstance(tool_use_id, str) and tool_use_id.strip() else None,
+                exit_code=exit_code,
+                error=error.strip() if isinstance(error, str) and error.strip() else None,
+                is_interrupt=is_interrupt,
+            )
+        )
+
     report_path = payload.get("report_path")
     if not isinstance(report_path, str) or not report_path.strip():
         raise ClaudeCodeAdapterError(f"session state field 'report_path' must be a string: {path}")
@@ -168,6 +236,7 @@ def load_session_state(repo_root: Path | str, session_id: str) -> ClaudeCodeSess
         write_paths=_require_list("write_paths"),
         commands=_require_list("commands"),
         claims=_require_list("claims"),
+        command_results=command_results,
         report_path=report_path,
     )
 
@@ -221,6 +290,37 @@ def resolve_active_session_id(repo_root: Path | str) -> str | None:
         return None
     session_id = active_path.read_text(encoding="utf-8").strip()
     return session_id or None
+
+
+def resolve_session_report_path(repo_root: Path | str, session_id: str | None = None) -> Path:
+    """Resolve the saved report path for one Claude Code session."""
+
+    root = _resolve_repo_root(repo_root)
+
+    if session_id:
+        report_path = _session_report_path(root, session_id)
+        if not report_path.exists():
+            raise FileNotFoundError(f"no saved Claude Code hook report found for session {session_id!r}")
+        return report_path
+
+    active_session_id = resolve_active_session_id(root)
+    if active_session_id:
+        active_report = _session_report_path(root, active_session_id)
+        if active_report.exists():
+            return active_report
+
+    reports_dir = _reports_dir(root)
+    if not reports_dir.exists():
+        raise FileNotFoundError("no saved Claude Code hook reports exist for this repo yet")
+
+    report_candidates = sorted(
+        (path for path in reports_dir.glob("*.json") if path.is_file()),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    if not report_candidates:
+        raise FileNotFoundError("no saved Claude Code hook reports exist for this repo yet")
+    return report_candidates[0]
 
 
 def _append_unique(values: list[str], item: str | None) -> list[str]:
@@ -279,6 +379,56 @@ def _command_from_tool_input(tool_input: dict[str, Any]) -> str | None:
     return None
 
 
+def _tool_use_id(payload: dict[str, Any]) -> str | None:
+    value = payload.get("tool_use_id")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def _tool_response(payload: dict[str, Any]) -> dict[str, Any]:
+    value = payload.get("tool_response")
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
+def _extract_exit_code(payload: dict[str, Any]) -> int | None:
+    tool_response = _tool_response(payload)
+    for key in ("exit_code", "exitCode", "status_code", "statusCode"):
+        value = tool_response.get(key)
+        if isinstance(value, int):
+            return value
+    return None
+
+
+def _command_result_from_payload(payload: dict[str, Any], *, outcome: str) -> ClaudeCodeCommandResult | None:
+    if payload.get("tool_name") not in COMMAND_TOOL_NAMES:
+        return None
+    command = _command_from_tool_input(_tool_input(payload))
+    if command is None:
+        return None
+    error = payload.get("error")
+    is_interrupt = payload.get("is_interrupt")
+    return ClaudeCodeCommandResult(
+        command=command,
+        outcome=outcome,
+        tool_use_id=_tool_use_id(payload),
+        exit_code=_extract_exit_code(payload),
+        error=error.strip() if isinstance(error, str) and error.strip() else None,
+        is_interrupt=is_interrupt if isinstance(is_interrupt, bool) else None,
+    )
+
+
+def _append_command_result(
+    results: list[ClaudeCodeCommandResult],
+    result: ClaudeCodeCommandResult | None,
+) -> list[ClaudeCodeCommandResult]:
+    if result is None:
+        return list(results)
+    return [*results, result]
+
+
 def _record_tool_use(state: ClaudeCodeSessionState, payload: dict[str, Any]) -> ClaudeCodeSessionState:
     tool_name = payload.get("tool_name")
     if not isinstance(tool_name, str) or not tool_name.strip():
@@ -293,6 +443,7 @@ def _record_tool_use(state: ClaudeCodeSessionState, payload: dict[str, Any]) -> 
             write_paths=list(state.write_paths),
             commands=list(state.commands),
             claims=list(state.claims),
+            command_results=list(state.command_results),
             report_path=state.report_path,
         )
     if tool_name in WRITE_TOOL_NAMES:
@@ -303,9 +454,11 @@ def _record_tool_use(state: ClaudeCodeSessionState, payload: dict[str, Any]) -> 
             write_paths=_append_unique(state.write_paths, _file_path_from_tool_input(tool_input)),
             commands=list(state.commands),
             claims=list(state.claims),
+            command_results=list(state.command_results),
             report_path=state.report_path,
         )
     if tool_name in COMMAND_TOOL_NAMES:
+        command_result = _command_result_from_payload(payload, outcome="success")
         return ClaudeCodeSessionState(
             repo_root=state.repo_root,
             session_id=state.session_id,
@@ -313,9 +466,26 @@ def _record_tool_use(state: ClaudeCodeSessionState, payload: dict[str, Any]) -> 
             write_paths=list(state.write_paths),
             commands=_append_unique(state.commands, _command_from_tool_input(tool_input)),
             claims=list(state.claims),
+            command_results=_append_command_result(state.command_results, command_result),
             report_path=state.report_path,
         )
     return state
+
+
+def _record_tool_failure(state: ClaudeCodeSessionState, payload: dict[str, Any]) -> ClaudeCodeSessionState:
+    command_result = _command_result_from_payload(payload, outcome="failure")
+    if command_result is None:
+        return state
+    return ClaudeCodeSessionState(
+        repo_root=state.repo_root,
+        session_id=state.session_id,
+        read_paths=list(state.read_paths),
+        write_paths=list(state.write_paths),
+        commands=list(state.commands),
+        claims=list(state.claims),
+        command_results=_append_command_result(state.command_results, command_result),
+        report_path=state.report_path,
+    )
 
 
 def _run_check(
@@ -369,6 +539,46 @@ def _post_tool_feedback(report: CheckReport) -> str | None:
     return _first_lines_for_violations(report.violations, title=title)
 
 
+def _post_tool_json_output(report: CheckReport) -> str | None:
+    message = _post_tool_feedback(report)
+    if message is None:
+        return None
+
+    payload: dict[str, Any] = {
+        "hookSpecificOutput": {
+            "hookEventName": "PostToolUse",
+            "additionalContext": message,
+        }
+    }
+    if report.decision == "block":
+        payload["decision"] = "block"
+        payload["reason"] = message
+    return json.dumps(payload, sort_keys=True)
+
+
+def _post_tool_failure_json_output(state: ClaudeCodeSessionState) -> str | None:
+    if not state.command_results:
+        return None
+
+    latest = state.command_results[-1]
+    if latest.outcome != "failure":
+        return None
+
+    lines = [f"cldc recorded failed command `{latest.command}`."]
+    if latest.error:
+        lines.append(latest.error)
+    lines.append("Only successful commands count toward `require_command` rules.")
+    return json.dumps(
+        {
+            "hookSpecificOutput": {
+                "hookEventName": "PostToolUseFailure",
+                "additionalContext": "\n".join(lines),
+            }
+        },
+        sort_keys=True,
+    )
+
+
 def _stop_block_payload(report: CheckReport) -> dict[str, str]:
     violations = _blocking_violations(report)
     reason = _first_lines_for_violations(
@@ -403,9 +613,18 @@ def record_claude_claim(
         write_paths=list(state.write_paths),
         commands=list(state.commands),
         claims=_append_unique(state.claims, cleaned_claim),
+        command_results=list(state.command_results),
         report_path=state.report_path,
     )
-    _write_state(updated)
+    persisted = _write_state(updated)
+    _run_check(
+        root,
+        resolved_session_id,
+        read_paths=persisted.read_paths,
+        write_paths=persisted.write_paths,
+        commands=persisted.commands,
+        claims=persisted.claims,
+    )
     return ClaudeCodeClaimReport(
         repo_root=str(root),
         session_id=resolved_session_id,
@@ -463,7 +682,7 @@ def run_pre_tool_use(repo_root: Path | str, payload_text: str) -> HookRuntimeRes
 
 
 def run_post_tool_use(repo_root: Path | str, payload_text: str) -> HookRuntimeResult:
-    """Record successful tool evidence and surface non-blocking feedback."""
+    """Record successful tool evidence and surface JSON hook feedback."""
 
     root = _resolve_repo_root(repo_root)
     payload = _read_hook_payload(payload_text)
@@ -474,8 +693,6 @@ def run_post_tool_use(repo_root: Path | str, payload_text: str) -> HookRuntimeRe
     tool_name = payload.get("tool_name")
     if tool_name not in READ_TOOL_NAMES | WRITE_TOOL_NAMES | COMMAND_TOOL_NAMES:
         return HookRuntimeResult(exit_code=0)
-    if tool_name in READ_TOOL_NAMES:
-        return HookRuntimeResult(exit_code=0)
 
     report = _run_check(
         root,
@@ -485,7 +702,29 @@ def run_post_tool_use(repo_root: Path | str, payload_text: str) -> HookRuntimeRe
         commands=updated.commands,
         claims=updated.claims,
     )
-    return HookRuntimeResult(exit_code=0, stdout=_post_tool_feedback(report))
+    if tool_name in READ_TOOL_NAMES:
+        return HookRuntimeResult(exit_code=0)
+    return HookRuntimeResult(exit_code=0, stdout=_post_tool_json_output(report))
+
+
+def run_post_tool_use_failure(repo_root: Path | str, payload_text: str) -> HookRuntimeResult:
+    """Record failed tool executions and keep the saved report fresh."""
+
+    root = _resolve_repo_root(repo_root)
+    payload = _read_hook_payload(payload_text)
+    session_id = _require_session_id(payload)
+    state = ensure_session_state(root, session_id)
+    updated = _write_state(_record_tool_failure(state, payload))
+
+    _run_check(
+        root,
+        session_id,
+        read_paths=updated.read_paths,
+        write_paths=updated.write_paths,
+        commands=updated.commands,
+        claims=updated.claims,
+    )
+    return HookRuntimeResult(exit_code=0, stdout=_post_tool_failure_json_output(updated))
 
 
 def run_stop(repo_root: Path | str, payload_text: str) -> HookRuntimeResult:

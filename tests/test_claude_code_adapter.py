@@ -12,8 +12,11 @@ from cldc.runtime.claude_code_adapter import (
     ensure_session_state,
     load_session_state,
     record_claude_claim,
+    resolve_session_report_path,
     run_post_tool_use,
+    run_post_tool_use_failure,
     run_pre_tool_use,
+    run_session_end,
     run_session_start,
     run_stop,
 )
@@ -141,6 +144,8 @@ def test_stop_blocks_until_required_claim_is_recorded(monkeypatch: pytest.Monkey
     claim_report = record_claude_claim(repo, "qa-reviewed")
     assert claim_report.session_id == session_id
     assert claim_report.claim_count == 1
+    updated_report = json.loads(Path(claim_report.report_path).read_text(encoding="utf-8"))
+    assert updated_report["decision"] == "pass"
 
     unblocked = run_stop(
         repo,
@@ -180,7 +185,9 @@ def test_post_tool_use_records_session_evidence_and_latest_report(monkeypatch: p
     )
     assert post_write.exit_code == 0
     assert post_write.stdout is not None
-    assert "run-tests" in post_write.stdout
+    post_write_payload = json.loads(post_write.stdout)
+    assert post_write_payload["hookSpecificOutput"]["hookEventName"] == "PostToolUse"
+    assert "run-tests" in post_write_payload["hookSpecificOutput"]["additionalContext"]
 
     assert run_post_tool_use(
         repo,
@@ -205,6 +212,7 @@ def test_post_tool_use_records_session_evidence_and_latest_report(monkeypatch: p
     assert state.write_paths == ["src/main.py"]
     assert state.commands == ["pytest -q"]
     assert state.read_paths == ["docs/rfcs/CLDC-0006-validator-engine.md"]
+    assert [result.outcome for result in state.command_results] == ["success"]
     assert Path(state.report_path).exists()
 
     final_stop = run_stop(
@@ -220,3 +228,102 @@ def test_post_tool_use_records_session_evidence_and_latest_report(monkeypatch: p
 
     persisted = load_session_state(repo, session_id)
     assert persisted.commands == ["pytest -q"]
+
+
+def test_post_tool_use_failure_records_failed_command_and_latest_report(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    fixture = Path(__file__).parent / "fixtures" / "repo_a"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    for source in fixture.rglob("*"):
+        if source.is_file():
+            destination = repo / source.relative_to(fixture)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    compile_repo_policy(repo)
+
+    session_id = "session-failure"
+    monkeypatch.setenv("CLDC_CLAUDE_STATE_DIR", str(tmp_path / "adapter-state"))
+    assert run_session_start(repo, _payload(session_id=session_id)).exit_code == 0
+    assert run_post_tool_use(
+        repo,
+        _payload(
+            session_id=session_id,
+            tool_name="Write",
+            tool_input={"file_path": "src/main.py", "content": "print('hi')"},
+            tool_response={"success": True},
+        ),
+    ).exit_code == 0
+
+    failed = run_post_tool_use_failure(
+        repo,
+        _payload(
+            session_id=session_id,
+            tool_name="Bash",
+            tool_input={"command": "pytest -q"},
+            tool_use_id="toolu_123",
+            error="Command exited with non-zero status code 1",
+            is_interrupt=False,
+        ),
+    )
+    assert failed.exit_code == 0
+    assert failed.stdout is not None
+    failure_payload = json.loads(failed.stdout)
+    assert failure_payload["hookSpecificOutput"]["hookEventName"] == "PostToolUseFailure"
+    assert "failed command `pytest -q`" in failure_payload["hookSpecificOutput"]["additionalContext"]
+
+    state = load_session_state(repo, session_id)
+    assert state.commands == []
+    assert len(state.command_results) == 1
+    assert state.command_results[0].outcome == "failure"
+    assert state.command_results[0].tool_use_id == "toolu_123"
+    assert state.command_results[0].error == "Command exited with non-zero status code 1"
+
+    latest_report = json.loads(Path(state.report_path).read_text(encoding="utf-8"))
+    assert latest_report["decision"] == "warn"
+    assert latest_report["violations"][0]["rule_id"] == "must-read-rfc"
+
+
+def test_resolve_session_report_path_falls_back_to_latest_saved_report(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    fixture = Path(__file__).parent / "fixtures" / "repo_a"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    for source in fixture.rglob("*"):
+        if source.is_file():
+            destination = repo / source.relative_to(fixture)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    compile_repo_policy(repo)
+
+    monkeypatch.setenv("CLDC_CLAUDE_STATE_DIR", str(tmp_path / "adapter-state"))
+
+    assert run_session_start(repo, _payload(session_id="session-a")).exit_code == 0
+    assert run_post_tool_use(
+        repo,
+        _payload(
+            session_id="session-a",
+            tool_name="Write",
+            tool_input={"file_path": "src/main.py", "content": "print('a')"},
+            tool_response={"success": True},
+        ),
+    ).exit_code == 0
+    report_a = resolve_session_report_path(repo, session_id="session-a")
+
+    assert run_session_start(repo, _payload(session_id="session-b")).exit_code == 0
+    assert run_post_tool_use(
+        repo,
+        _payload(
+            session_id="session-b",
+            tool_name="Write",
+            tool_input={"file_path": "src/main.py", "content": "print('b')"},
+            tool_response={"success": True},
+        ),
+    ).exit_code == 0
+    assert run_session_end(repo, _payload(session_id="session-b")).exit_code == 0
+    latest_report = resolve_session_report_path(repo)
+
+    assert latest_report != report_a
+    assert latest_report.name == "session-b.json"

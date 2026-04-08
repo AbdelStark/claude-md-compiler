@@ -117,14 +117,17 @@ from cldc.runtime.report_schema import (
 )
 from cldc.runtime.claude_code_adapter import (
     ClaudeCodeClaimReport,
+    ClaudeCodeCommandResult,
     ClaudeCodeSessionState,
     HookRuntimeResult,
     record_claude_claim,
     run_post_tool_use,
+    run_post_tool_use_failure,
     run_pre_tool_use,
     run_session_end,
     run_session_start,
     run_stop,
+    resolve_session_report_path,
 )
 
 # Hooks and onboarding
@@ -517,7 +520,10 @@ wires Claude Code's lifecycle hooks into `cldc`'s stateful session adapter:
 - `PreToolUse` blocks true write preconditions such as blocking
   `deny_write` and `require_read`.
 - `PostToolUse` records successful `Read`, `Edit`, `Write`, `MultiEdit`, and
-  `Bash` evidence and persists the latest report.
+  `Bash` evidence, persists the latest report, and returns JSON hook feedback
+  Claude can actually process.
+- `PostToolUseFailure` records failed commands separately so only successful
+  commands satisfy `require_command`.
 - `Stop` evaluates the full accumulated session and can emit a blocking
   payload while workflow invariants remain unmet.
 - `SessionEnd` deletes mutable session state but leaves the latest saved
@@ -539,6 +545,16 @@ The runtime helpers are also available directly for embedders that want to
 drive the lifecycle themselves instead of shelling out through `cldc hook
 runtime`. The generated settings snippet is still intentionally generate-only;
 merging it into an existing settings file is the operator's job.
+
+To hand the saved hook report into the normal report/rendering pipeline:
+
+```python
+from cldc.runtime.claude_code_adapter import resolve_session_report_path
+from cldc.runtime.reporting import load_check_report_file
+
+report_path = resolve_session_report_path("./my-repo")
+report_payload = load_check_report_file(report_path)
+```
 
 ## Typed exceptions
 

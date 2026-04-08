@@ -290,12 +290,15 @@ The generated Claude Code settings wire the lifecycle this way:
 2. `PreToolUse` blocks true write preconditions before the edit happens:
    blocking `deny_write` and blocking `require_read`.
 3. `PostToolUse` records successful `Read`, `Edit`, `Write`, `MultiEdit`, and
-   `Bash` evidence, then emits concise workflow feedback without interrupting
-   normal tool flow.
-4. `Stop` evaluates the full accumulated session state and returns a blocking
+   `Bash` evidence, then emits Claude-visible JSON feedback when warnings or
+   blocking workflow requirements remain.
+4. `PostToolUseFailure` records failed `Bash` commands separately, keeps them
+   out of the success-only command evidence set, and tells Claude that failed
+   commands do not satisfy `require_command`.
+5. `Stop` evaluates the full accumulated session state and returns a blocking
    payload while blocking workflow invariants remain unmet, including
    `couple_change`, `require_command`, and `require_claim`.
-5. `SessionEnd` deletes the mutable session state while leaving the latest
+6. `SessionEnd` deletes the mutable session state while leaving the latest
    saved report on disk for later inspection.
 
 By default, the adapter stores machine-local state under
@@ -303,6 +306,17 @@ By default, the adapter stores machine-local state under
 override that root. Claims stay explicit because Claude Code does not emit a
 native claim event; use `cldc hook claim` when a human, harness, or CI system
 needs to append one.
+
+Saved hook reports are first-class handoff artifacts. You can render the most
+recent one directly without hunting for a path:
+
+```bash
+cldc explain . --hook-report --format markdown
+cldc fix . --hook-report --json
+
+# Or target a specific Claude Code session id
+cldc explain . --hook-report --hook-session abc123
+```
 
 ### Near-term Claude adapter roadmap
 
