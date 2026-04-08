@@ -12,7 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import cldc
-from cldc import _read_source_version
+from cldc import _read_source_version, _resolve_version
 
 
 def test_package_version_matches_pyproject():
@@ -34,6 +34,20 @@ def test_read_source_version_reads_pyproject_toml():
     parts = version_str.split(".")
     assert len(parts) >= 3, f"unexpected version shape: {version_str!r}"
     assert all(part for part in parts), f"empty segment in version: {version_str!r}"
+
+
+def test_resolve_version_prefers_source_checkout_version(monkeypatch):
+    monkeypatch.setattr(cldc, "_read_source_version", lambda: "0.1.1")
+    monkeypatch.setattr(cldc, "_read_installed_version", lambda: "0.1.0")
+
+    assert _resolve_version() == "0.1.1"
+
+
+def test_resolve_version_falls_back_to_installed_metadata(monkeypatch):
+    monkeypatch.setattr(cldc, "_read_source_version", lambda: "0.0.0")
+    monkeypatch.setattr(cldc, "_read_installed_version", lambda: "0.1.1")
+
+    assert _resolve_version() == "0.1.1"
 
 
 def test_read_source_version_falls_back_when_pyproject_missing(monkeypatch, tmp_path):

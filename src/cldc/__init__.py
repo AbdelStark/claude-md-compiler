@@ -46,10 +46,22 @@ def _read_source_version() -> str:
     return source_version if isinstance(source_version, str) else "0.0.0"
 
 
-try:
-    __version__ = version("claude-md-compiler")
-except PackageNotFoundError:
-    __version__ = _read_source_version()
+def _read_installed_version() -> str:
+    try:
+        return version("claude-md-compiler")
+    except PackageNotFoundError:
+        return "0.0.0"
+
+
+def _resolve_version() -> str:
+    source_version = _read_source_version()
+    if source_version != "0.0.0":
+        return source_version
+
+    return _read_installed_version()
+
+
+__version__ = _resolve_version()
 
 
 __all__ = [
