@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Narrated langchain e2e demo runner behind `make e2e`, with a visible
+  pipeline map, colored stage cards, explicit ingest/parse/compile/runtime/
+  doctor/fix-plan walkthrough, and optional timed or interactive pauses for
+  recordings and live demos.
+
+### Changed
+
+- Raw pytest e2e coverage now lives behind `make e2e-test`; `make e2e`
+  launches the visual demo flow instead of the plain pytest output.
+
 ## [0.2.0] - 2026-04-08
 
 ### Added

@@ -34,6 +34,7 @@
 - `src/cldc/scaffold.py`: `cldc init` scaffolding for a fresh repo.
 - `src/cldc/tui/`: Textual-based interactive TUI (`cldc tui`). `app.py` hosts `CldcApp`, `state.py` owns the `TuiState` dataclass + loaders, `widgets.py` defines the custom panes, and `styles.tcss` is the dark theme stylesheet.
 - `tests/fixtures/repo_a/`: canonical fixture repo used by compile/runtime/CLI tests.
+- `tests/e2e/`: narrated langchain demo runner plus the raw pytest e2e suite (`make e2e` / `make e2e-test`).
 - `docs/library-usage.md`: full library reference for embedders.
 - `docs/rfcs/`: frozen implementation contracts.
 

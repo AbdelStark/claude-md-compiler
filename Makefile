@@ -2,7 +2,9 @@
 # Usage: `make <target>`. Run `make help` for the full target list.
 
 .DEFAULT_GOAL := help
-.PHONY: help install test e2e lint fmt fmt-check typecheck cover build clean smoke tui all
+.PHONY: help install test e2e e2e-fast e2e-interactive e2e-test lint fmt fmt-check typecheck cover build clean smoke tui all
+
+E2E_DEMO_ARGS ?= --pause-seconds 1.25
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-12s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -13,7 +15,16 @@ install: ## Sync the locked dev environment
 test: ## Run the full pytest suite (quiet, excludes e2e and benchmarks)
 	uv run pytest -q
 
-e2e: ## Run end-to-end tests against real upstream repos (clones langchain, ~60s)
+e2e: ## Launch the narrated e2e demo against langchain
+	uv run python -m tests.e2e.demo $(E2E_DEMO_ARGS)
+
+e2e-fast: ## Launch the narrated e2e demo with no automatic pauses
+	uv run python -m tests.e2e.demo --pause-seconds 0
+
+e2e-interactive: ## Launch the narrated e2e demo and wait for a keypress between stages
+	uv run python -m tests.e2e.demo --interactive --pause-seconds 0
+
+e2e-test: ## Run the raw pytest e2e regression suite against real upstream repos
 	uv run pytest -m e2e -v
 
 lint: ## Run ruff lint checks against src + tests

@@ -380,34 +380,46 @@ Global flags on the top-level `cldc` command:
 - `--quiet`, `-q`: suppress warnings, leaving only errors.
 - `--version`: print the package version.
 
-## End-to-end test against a real repo
+## End-to-end demo against a real repo
 
-The repo ships an opt-in e2e test suite that demonstrates the full
-compile → check → fix flow against a real upstream repo. By default it
-clones [langchain-ai/langchain](https://github.com/langchain-ai/langchain),
+The repo ships a narrated e2e demo that walks the full cldc pipeline
+against a real upstream repo. By default it clones
+[langchain-ai/langchain](https://github.com/langchain-ai/langchain),
 drops a hand-authored `.claude-compiler.yaml` (under
 `tests/e2e/compiler.yaml`) alongside the repo's existing `CLAUDE.md`
-context, defines explicit structured rules, and walks through:
+context, and shows each stage explicitly:
 
-- a **red phase**: edits that should violate specific rules and the
-  decision is `block` with a non-zero exit code,
-- a **green phase**: a complete evidence set that satisfies every rule
-  and the decision is `pass`,
-- a **fix-plan phase**: building a remediation plan from the red report
-  and asserting the steps reference the right rules.
+- **ingest**: which policy sources were discovered and what each one means,
+- **parse**: which structured rules were normalized out of those sources,
+- **compile**: the lockfile artifact and its deterministic metadata,
+- **runtime**: red and green evidence sets rendered as human-readable reports,
+- **doctor**: post-compile health and freshness checks,
+- **fix-plan**: deterministic remediation from a failing report.
 
-Run it with:
+Launch the visual demo with:
 
 ```bash
 make e2e
+make e2e-interactive
+make e2e-fast
+```
+
+`make e2e` is screen-recording friendly by default: a visible pipeline map,
+colored stage cards, explicit module/input/output explainers, rendered reports,
+and short pauses between steps. Use `make e2e-interactive` to wait for a
+keypress between stages instead.
+
+The raw pytest regression suite is still available and excluded from the
+default `pytest` run via the `e2e` marker:
+
+```bash
+make e2e-test
 # or
 uv run pytest -m e2e -v
 ```
 
-The suite is excluded from the default `pytest` run via the `e2e` marker, so
-it never slows down regular CI. It requires `git` on `PATH` and network
-access; both are checked at collection time and produce a clean `pytest.skip`
-if missing.
+Both flows require `git` on `PATH` and network access so the upstream repo
+can be cloned.
 
 ## How policy is authored
 

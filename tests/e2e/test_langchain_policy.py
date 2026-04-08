@@ -19,7 +19,7 @@ The story this test tells, step by step:
    remediation steps are actionable and reference the right rules.
 
 Every test is marked `@pytest.mark.e2e` and is excluded from the default
-pytest run. Invoke with `make e2e` or `uv run pytest -m e2e`.
+pytest run. Invoke with `make e2e-test` or `uv run pytest -m e2e`.
 """
 
 from __future__ import annotations

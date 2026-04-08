@@ -62,7 +62,7 @@ right kind of test for the layer you are changing:
 | `tests/test_benchmarks.py` | `pytest-benchmark` baselines (opt-in via `--benchmark-only`). |
 | `tests/test_cli.py` | CLI contract: argparse wiring, exit codes, JSON output shape. |
 | `tests/test_validation.py` | Cross-cutting: malformed input, schema drift, stale lockfile rejection. |
-| `tests/e2e/` | End-to-end tests against `langchain-ai/langchain` (opt-in via `pytest -m e2e`). |
+| `tests/e2e/` | Narrated langchain demo (`make e2e`) plus raw pytest e2e regression coverage (`make e2e-test`). |
 | `tests/smoke_test.py` | Post-build wheel smoke (`make smoke`). |
 
 Every bug fix should add a regression test.
@@ -115,6 +115,8 @@ Individual targets:
 
 - `make install` — sync the locked dev env
 - `make test` — run the pytest suite
+- `make e2e` / `make e2e-interactive` / `make e2e-fast` — narrated langchain demo flow with timed or keypress-based stage pacing
+- `make e2e-test` — raw pytest e2e regression suite
 - `make lint` / `make fmt` / `make fmt-check` — ruff lint and format
 - `make typecheck` — pyright
 - `make cover` — pytest with coverage
