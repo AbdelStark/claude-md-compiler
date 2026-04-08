@@ -33,7 +33,7 @@ cover: ## Run pytest with coverage report (term-missing)
 
 build: ## Build wheel + sdist into dist/
 	rm -rf dist/
-	uv build --clear
+	uv build
 
 smoke: build ## Smoke-test the freshly-built wheel in an isolated env
 	uv run --isolated --no-project --with dist/*.whl tests/smoke_test.py

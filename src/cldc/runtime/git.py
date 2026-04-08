@@ -1,3 +1,12 @@
+"""Git integration for `cldc ci`.
+
+`collect_git_write_paths` runs `git diff` against either the staging area or
+a base/head range and returns the changed paths plus deterministic provenance
+metadata that can be embedded in a check report. Subprocess failures, invalid
+flag combinations, and a missing `git` binary on PATH are all surfaced as
+`GitError` so callers can route on the typed exception.
+"""
+
 from __future__ import annotations
 
 import subprocess

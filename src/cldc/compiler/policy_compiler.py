@@ -1,3 +1,16 @@
+"""Policy compilation and `doctor` diagnostics for cldc.
+
+`compile_repo_policy` is the third stage of the pipeline: it loads sources,
+parses them into a `ParsedPolicy`, computes a SHA-256 source digest over a
+canonicalized source bundle, and writes `.claude/policy.lock.json` with
+sorted keys and explicit `$schema` / `format_version` fields.
+
+`doctor_repo_policy` is the introspection counterpart. It performs the same
+discovery + parse pass without rewriting the lockfile, then validates the
+existing lockfile (if any) against the freshly parsed sources and returns a
+`DoctorReport` that callers can render as text or JSON.
+"""
+
 from __future__ import annotations
 
 import hashlib
@@ -139,16 +152,13 @@ def compile_repo_policy(repo_root: Path | str) -> CompiledPolicy:
     return compiled
 
 
-def _safe_resolve(path: Path | str) -> str:
-    # Path.resolve(strict=False) — the default — never raises for missing
-    # paths, so this is just a thin alias kept for readability.
-    return str(Path(path).resolve())
-
-
 def _empty_doctor_report(repo_root: Path | str, errors: list[str]) -> DoctorReport:
     """Build a DoctorReport that represents a failure before discovery completed."""
+    # Path.resolve(strict=False) is the default and never raises for a
+    # missing path, so it is safe to call on a doctor target that may not
+    # exist on disk yet.
     return DoctorReport(
-        repo_root=_safe_resolve(repo_root),
+        repo_root=str(Path(repo_root).resolve()),
         discovered=False,
         source_count=0,
         rule_count=0,

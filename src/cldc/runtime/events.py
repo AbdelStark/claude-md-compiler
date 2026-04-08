@@ -1,3 +1,19 @@
+"""Runtime evidence ingestion for cldc.
+
+`load_execution_inputs` validates a JSON evidence payload — produced by an
+agent harness, a CI hook, a developer pasting JSON into stdin, or any other
+producer — and normalizes it into a single `ExecutionInputs` dataclass.
+
+Two payload shapes are supported and may be combined:
+
+* bulk lists keyed by `read_paths`, `write_paths`, `commands`, `claims`;
+* a list of typed events under `events`, each with a `kind` discriminator
+  (`read`, `write`, `command`, `claim`).
+
+Validation is strict: any malformed entry raises `EvidenceError` with an
+indexed location pointing at the offending element so producers can fix it.
+"""
+
 from __future__ import annotations
 
 import json

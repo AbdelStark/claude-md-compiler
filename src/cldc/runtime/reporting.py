@@ -1,3 +1,15 @@
+"""Saved policy report normalization and rendering for cldc.
+
+The runtime evaluator returns a `CheckReport` dataclass; downstream tools
+(CI dashboards, the `cldc explain` command, or a separate visualizer) typically
+consume the JSON form persisted by `cldc check --json --output`.
+
+`load_check_report` validates such a JSON payload against the
+`policy-report/v1` schema, raising `ReportError` on schema drift or
+malformed structure. `render_check_report` then turns the normalized report
+into either plain text or Markdown for human review.
+"""
+
 from __future__ import annotations
 
 import json

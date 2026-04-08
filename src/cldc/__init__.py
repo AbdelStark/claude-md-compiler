@@ -1,3 +1,20 @@
+"""Top-level public API for the `claude-md-compiler` package.
+
+`cldc` compiles repository policy from `CLAUDE.md`, `.claude-compiler.yaml`,
+`policies/*.yml`, and bundled preset packs into a versioned lockfile, then
+enforces that lockfile against runtime evidence and git-derived diffs.
+
+This module re-exports the typed exception hierarchy and the package version
+so library consumers can write::
+
+    from cldc import __version__, CldcError
+
+without reaching into the internal module layout. Higher-level entry points
+live under their dedicated subpackages (`cldc.compiler`, `cldc.runtime`,
+`cldc.presets`, `cldc.scaffold`, `cldc.tui`); see `docs/library-usage.md` for
+the full library reference.
+"""
+
 from __future__ import annotations
 
 import tomllib

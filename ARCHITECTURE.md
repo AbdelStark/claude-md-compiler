@@ -42,8 +42,13 @@ Primary modules per layer:
   (`CHECK_REPORT_SCHEMA`, `CHECK_REPORT_FORMAT_VERSION`).
 - Presets: `src/cldc/presets/loader.py` (`list_presets`, `load_preset`,
   `preset_path`, `PresetNotFoundError`, `PRESET_SOURCE_KIND`).
-- CLI: `src/cldc/cli/main.py` (argparse subparsers for `compile`, `doctor`,
-  `check`, `ci`, `explain`, `fix`, `preset`, `tui`).
+- CLI: `src/cldc/cli/main.py` (argparse subparsers for `init`, `compile`,
+  `doctor`, `check`, `ci`, `explain`, `fix`, `preset`, `hook`, `tui`).
+- Onboarding: `src/cldc/scaffold.py` (`initialize_repo_policy`, `InitReport`)
+  powering `cldc init`.
+- Hooks: `src/cldc/runtime/hooks.py` (`generate_hook`, `install_hook`,
+  `HookArtifact`, `HookInstallReport`) powering `cldc hook generate` and
+  `cldc hook install`.
 - TUI: `src/cldc/tui/app.py` (`CldcApp`, `run_tui`, modal screens for presets
   and doctor), `src/cldc/tui/state.py` (`TuiState`, `Evidence`,
   `discover_state`, `recompile_state`, `run_check`),
@@ -217,8 +222,17 @@ Each layer has a dedicated test module so failures point at one place.
 | `tests/test_compiler.py` | Compiler: lockfile shape, digest stability, `doctor` diagnostics. |
 | `tests/test_runtime.py` | Runtime: evaluation of all rule kinds, evidence merging, git integration. |
 | `tests/test_presets.py` | Presets: loader API, bundled pack contents, `extends:` end-to-end. |
+| `tests/test_reporting.py` | Reporting: saved-report normalization, text/markdown rendering. |
+| `tests/test_hooks.py` | Hooks: `cldc hook generate`/`install` artifacts and refusal to clobber. |
+| `tests/test_scaffold.py` | Scaffold: `cldc init` config + `CLAUDE.md` generation, force semantics. |
+| `tests/test_errors.py` | Typed exception hierarchy and `--json` `error_type` envelope. |
+| `tests/test_logging.py` | Library logger silence and CLI `--verbose`/`--quiet` wiring. |
+| `tests/test_tui.py` | TUI: state loaders + Pilot-driven binding smoke tests. |
+| `tests/test_properties.py` | Hypothesis property tests for parser, evaluator, and event loader. |
+| `tests/test_benchmarks.py` | `pytest-benchmark` baselines (opt-in via `--benchmark-only`). |
 | `tests/test_cli.py` | CLI contract: argparse wiring, exit codes, JSON output shape. |
 | `tests/test_validation.py` | Cross-cutting: malformed input, schema drift, stale lockfile rejection. |
+| `tests/e2e/` | End-to-end tests against a real upstream repo (`langchain-ai/langchain`); opt-in via `pytest -m e2e`. |
 | `tests/smoke_test.py` | Post-build wheel smoke; run against `dist/*.whl` after `uv build`. |
 
 The canonical fixture repository lives at `tests/fixtures/repo_a/` and is

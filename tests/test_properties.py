@@ -15,10 +15,10 @@ from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 
 from cldc.compiler.policy_compiler import compile_repo_policy
+from cldc.errors import RepoBoundaryError
 from cldc.ingest.discovery import DiscoveryResult
 from cldc.ingest.source_loader import PolicySource, SourceBundle
 from cldc.parser.rule_parser import ParsedPolicy, parse_rule_documents
-from cldc.errors import RepoBoundaryError
 from cldc.runtime.evaluator import (
     _matches_any,
     _matching_claims,

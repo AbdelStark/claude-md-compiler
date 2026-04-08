@@ -9,6 +9,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- New `docs/library-usage.md` — full library reference covering every public
+  symbol, the JSON shapes that `to_dict()` produces, the typed exception
+  hierarchy, the determinism guarantees, and worked examples for each rule
+  kind. Linked from the README, CONTRIBUTING, and CLAUDE.md.
+- README rewrite for world-class open-source presentation: table of contents,
+  60-second tour, full command-surface table, dedicated "Exit codes and JSON
+  contracts" section with the `error_type` envelope, "Library API" section,
+  expanded "Project status", and a "Learn more" hub with explicit links to
+  ARCHITECTURE, library usage, RFCs, CONTRIBUTING, CHANGELOG, SECURITY.
+- `tests/test_events.py` (19 tests) covering the file/text loaders for
+  `load_execution_inputs_*`, every error branch in `load_execution_inputs`,
+  and the `ExecutionInputs.merged_with` invariants. Lifts `events.py`
+  coverage from 78% to 100%.
+- `tests/test_remediation.py` (13 tests) covering `_normalize_fix_plan`'s
+  validation paths: schema drift, format-version mismatch, malformed
+  remediation lists, missing required fields, non-bool `can_autofix`,
+  non-int counts, non-dict inputs, and nullable source-provenance fields.
+- `tests/test_version.py` (3 tests) covering the
+  `cldc.__version__`/`_read_source_version` resolver, including the
+  `pyproject.toml`-missing fallback path.
+- Module-level docstrings on every previously docstring-less module under
+  `src/cldc/`: top-level package, CLI, ingest (discovery, source loader, init),
+  parser (rule parser, init), compiler (policy compiler, init), runtime
+  (evaluator, events, git, reporting, remediation, report_schema, init).
+  Documents the role each module plays in the ingest → parser → compiler →
+  runtime pipeline.
+- `pyproject.toml` PyPI metadata polish: expanded `description`,
+  contact-bearing `authors`/`maintainers`, broader `keywords` and
+  `classifiers` (including `Typing :: Typed`, `Topic :: Utilities`, OS
+  family classifiers), and `Documentation`/`Changelog`/`Source Code` URLs.
+- `tests/smoke_test.py` now also asserts that `init` and `hook` show up in
+  `cldc --help`, that bundled presets are listed, and that `cldc hook
+  generate git-pre-commit` / `cldc hook generate claude-code` produce the
+  expected content. The post-build wheel smoke now exercises the full
+  shipped command surface.
+- `Makefile`: existing `e2e`, `tui`, and `cover` targets are now reflected
+  in the documented release / contributor flow.
+
+### Changed
+
+- Removed the unused `_safe_resolve` helper from
+  `src/cldc/compiler/policy_compiler.py`; the doctor report now resolves the
+  repo path inline. No public API change.
+- Test-suite hygiene: `tests/test_properties.py` import block sorted to
+  isort/ruff layout; `tests/test_reporting.py` `pytest.raises(match=...)`
+  patterns escaped with raw strings (RUF043).
+
+### Fixed
+
+- `ARCHITECTURE.md` now lists every test file and points at every CLI
+  subparser the package actually ships (`init`, `hook`, `tui`, plus the
+  long-standing seven). `CONTRIBUTING.md` test layout matches.
+- `CLAUDE.md` repository map now lists `_logging`, `errors`, and the
+  `runtime/report_schema.py` indirection module that exists to break what
+  would otherwise be a circular import between the evaluator and the
+  reporting layer.
+
+### Added (previous polish phase carry-over)
+
 - New `cldc hook` command — generates and installs hook scripts that
   bridge the gap between policy enforcement and the actual moments work
   is finished. `cldc hook generate git-pre-commit` prints a portable

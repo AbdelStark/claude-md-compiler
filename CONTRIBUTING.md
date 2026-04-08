@@ -41,12 +41,29 @@ uv run cldc check tests/fixtures/repo_a --write src/main.py --json
 
 ## Tests
 
-The repository relies on both direct module tests and CLI regression tests.
+The repository relies on direct module tests, CLI regression tests, property
+tests, an opt-in end-to-end suite, and a post-build wheel smoke test. Add the
+right kind of test for the layer you are changing:
 
-- `tests/test_compiler.py`: lockfile generation and compile metadata
-- `tests/test_runtime.py`: enforcement behavior and artifact validation
-- `tests/test_cli.py`: end-to-end CLI contract
-- `tests/test_validation.py`: malformed input and drift/error handling
+| Test file | Layer under test |
+| --- | --- |
+| `tests/test_source_loader.py` | Ingest: discovery, source loading, inline blocks, `extends:` resolution. |
+| `tests/test_rule_parser.py` | Parser: rule validation and normalization. |
+| `tests/test_compiler.py` | Compiler: lockfile shape and digest stability. |
+| `tests/test_runtime.py` | Runtime: evaluation of all rule kinds, evidence merging, git integration. |
+| `tests/test_reporting.py` | Reporting: saved-report normalization and rendering. |
+| `tests/test_presets.py` | Presets: loader API, bundled pack contents, `extends:` end-to-end. |
+| `tests/test_hooks.py` | Hooks: `cldc hook generate`/`install` artifacts. |
+| `tests/test_scaffold.py` | Scaffold: `cldc init` config + stub `CLAUDE.md`. |
+| `tests/test_errors.py` | Typed exception hierarchy. |
+| `tests/test_logging.py` | Library silence and CLI logging wiring. |
+| `tests/test_tui.py` | TUI: state loaders + Pilot-driven smoke tests. |
+| `tests/test_properties.py` | Hypothesis property tests. |
+| `tests/test_benchmarks.py` | `pytest-benchmark` baselines (opt-in via `--benchmark-only`). |
+| `tests/test_cli.py` | CLI contract: argparse wiring, exit codes, JSON output shape. |
+| `tests/test_validation.py` | Cross-cutting: malformed input, schema drift, stale lockfile rejection. |
+| `tests/e2e/` | End-to-end tests against `langchain-ai/langchain` (opt-in via `pytest -m e2e`). |
+| `tests/smoke_test.py` | Post-build wheel smoke (`make smoke`). |
 
 Every bug fix should add a regression test.
 
@@ -58,6 +75,7 @@ Keep these files current when behavior changes:
 - `CLAUDE.md`
 - `ARCHITECTURE.md`
 - `CHANGELOG.md`
+- `docs/library-usage.md`
 
 `docs/rfcs/` are treated as specification documents. Do not edit them casually as implementation notes.
 

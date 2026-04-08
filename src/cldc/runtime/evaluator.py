@@ -1,3 +1,20 @@
+"""Runtime policy evaluation for cldc.
+
+`check_repo_policy` is the pure-function judge. It loads the compiled
+lockfile, validates its freshness against the live policy sources, normalizes
+the supplied evidence (read paths, write paths, commands, claims) into
+repo-relative POSIX form, and evaluates each rule. The result is a
+`CheckReport` carrying a structured `decision` (`pass`/`warn`/`block`),
+a list of `Violation`s with prescriptive next-step text, and metadata about
+the inputs that were considered.
+
+The evaluator is deliberately offline, deterministic, and side-effect-free —
+no network calls, no model inference, no implicit "best effort" fallbacks. A
+malformed lockfile or unsupported rule kind raises `LockfileError` instead of
+degrading to a silent pass; an evidence path that escapes the discovered repo
+root raises `RepoBoundaryError`.
+"""
+
 from __future__ import annotations
 
 import fnmatch

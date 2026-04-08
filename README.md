@@ -15,11 +15,16 @@
 
 </div>
 
-## What It Does
+## What it does
 
-`cldc` is a Python CLI that compiles repository policy from `CLAUDE.md`, `.claude-compiler.yaml`, and `policies/*.yml` into a versioned lockfile, then checks file edits, commands, and git diffs against that policy.
+`cldc` is a Python CLI **and** a typed library that compiles repository policy
+from `CLAUDE.md`, `.claude-compiler.yaml`, and `policies/*.yml` into a
+versioned lockfile, then checks file edits, commands, and git diffs against
+that policy. It is purpose-built for agentic coding harnesses (Claude Code,
+Cursor, Aider, etc.) that need a deterministic, offline, exit-coded judge
+sitting between the model and the working tree.
 
-## In Plain English
+## In plain English
 
 When you use an agentic coding tool (Claude Code, Cursor, Aider, etc.), the agent reads `CLAUDE.md` for "house rules": which folders are off-limits, which docs to consult before editing, which commands must run before a change is considered done. That file is **prose**. The agent decides, on each turn, whether to honor it. There is no enforcement, no audit trail, and no way for CI to check the same rules later.
 
@@ -73,59 +78,109 @@ A lockfile is the smallest unit of trust that survives time and travel:
 - It does not invent rule kinds. Unsupported rules are a hard error, never a silent pass.
 - It does not phone home. Every check is local, offline, and deterministic.
 
-## Why It Exists
+## Why it exists
 
-`CLAUDE.md` is usually advisory text. `cldc` turns repo rules into a deterministic artifact that local runs, CI, and review tooling can enforce the same way every time.
+`CLAUDE.md` is usually advisory text. `cldc` turns repo rules into a
+deterministic artifact that local runs, CI, and review tooling can enforce the
+same way every time.
 
-## Who It Is For
+## Who it is for
 
 - Developers using agentic coding tools in real repositories.
 - Platform or infra teams that want repo-level guardrails.
 - Maintainers who want explainable, local-first policy checks instead of hidden heuristics.
 
+## Table of contents
+
+- [What it does](#what-it-does)
+- [In plain English](#in-plain-english)
+- [Why it exists](#why-it-exists)
+- [Who it is for](#who-it-is-for)
+- [Install](#install)
+- [60-second tour](#60-second-tour)
+- [Command surface](#command-surface)
+- [Interactive TUI](#interactive-tui)
+- [Automatic enforcement hooks](#automatic-enforcement-hooks)
+- [Exit codes and JSON contracts](#exit-codes-and-json-contracts)
+- [End-to-end test against a real repo](#end-to-end-test-against-a-real-repo)
+- [How policy is authored](#how-policy-is-authored)
+- [Preset policy packs](#preset-policy-packs)
+- [Rule model](#rule-model)
+- [Evidence inputs](#evidence-inputs)
+- [Library API](#library-api)
+- [Architecture](#architecture)
+- [Development](#development)
+- [Project status](#project-status)
+- [Learn more](#learn-more)
+- [License](#license)
+
 ## Install
 
-`cldc` requires Python 3.11+.
+`cldc` requires Python 3.11+. The recommended path is a tool-style install
+through `uv` or `pipx`, which keeps the CLI on its own venv:
 
 ```bash
-# persistent install
+# persistent install (recommended)
 uv tool install claude-md-compiler
 
 # or
 pipx install claude-md-compiler
 
-# one-shot
+# one-shot, no install
 uvx --from claude-md-compiler cldc --version
 ```
 
-For local development inside this repository, use the [development workflow](#development) instead of installing the project into itself.
+For local development inside this repository, use the
+[development workflow](#development) instead of installing the project into
+itself.
 
-## Quickstart
+## 60-second tour
+
+Bootstrap a brand-new repo, compile policy, and enforce it on the very next
+file edit:
 
 ```bash
-# 1. Compile policy into .claude/policy.lock.json
+# 1. Scaffold .claude-compiler.yaml + a stub CLAUDE.md
+cldc init . --preset default --preset strict
+
+# 2. Compile policy into .claude/policy.lock.json
 cldc compile .
 
-# 2. Check a change directly
+# 3. Check a hypothetical change directly
 cldc check . --write src/main.py --command "pytest -q"
 
-# 3. Explain or save the report
+# 4. Render a human-readable report
 cldc explain . --write src/main.py --format markdown
 
-# 4. Generate a remediation plan
+# 5. Build a deterministic remediation plan
 cldc fix . --write src/main.py --format markdown
 
-# 5. Gate a staged diff or PR range
+# 6. Gate a staged diff or PR range from CI
 cldc ci . --staged
 cldc ci . --base origin/main --head HEAD
 
-# 6. Or explore everything interactively in the terminal
+# 7. Explore everything interactively in the terminal
 cldc tui .
 
-# 7. Wire enforcement into git and Claude Code automatically
+# 8. Wire enforcement into git and Claude Code automatically
 cldc hook install git-pre-commit .
 cldc hook generate claude-code > .claude/settings.json
 ```
+
+## Command surface
+
+| Command | What it does |
+| --- | --- |
+| `cldc init` | Scaffold `.claude-compiler.yaml` (and a stub `CLAUDE.md`) for a fresh repo, extending one or more bundled presets. |
+| `cldc compile` | Compile sources into a deterministic `.claude/policy.lock.json` lockfile. |
+| `cldc doctor` | Inspect discovery, parsing, and lockfile health; surface stale/drifted artifacts. |
+| `cldc check` | Evaluate runtime evidence (reads, writes, commands, claims) against the lockfile. |
+| `cldc ci` | Derive write paths from `git diff --cached` or `git diff base...head` and run `check`. |
+| `cldc explain` | Render a saved report (or fresh evidence) as text or Markdown. |
+| `cldc fix` | Build a deterministic remediation plan from a saved report or fresh evidence. |
+| `cldc preset list` / `show` | Browse the bundled preset policy packs. |
+| `cldc hook generate` / `install` | Emit or install a git pre-commit hook or a Claude Code settings snippet. |
+| `cldc tui` | Launch the interactive Textual-based policy explorer. |
 
 ## Interactive TUI
 
@@ -151,7 +206,7 @@ Keybindings:
 The TUI uses only the same library calls as the non-interactive CLI, so the
 behavior you see on screen is the behavior a `cldc check` in CI would produce.
 
-## Automatic Enforcement Hooks
+## Automatic enforcement hooks
 
 `cldc hook` generates and installs hook scripts that run policy
 enforcement at the moments work is finished, so you do not have to
@@ -182,6 +237,55 @@ The Claude Code snippet is generate-only by design — it is meant to be
 copied or merged into an existing `.claude/settings.json` rather than
 written blindly over a settings file the user may already have customized.
 
+## Exit codes and JSON contracts
+
+`cldc` is built to be called from a harness, a CI step, or a pre-commit hook,
+not just from a human shell. Every command behaves predictably in those
+contexts:
+
+| Exit code | Meaning |
+| --- | --- |
+| `0` | Clean run, or a non-blocking result (decisions `pass` or `warn`). |
+| `1` | Runtime or input error (malformed repo, bad evidence payload, git failure, stale lockfile, etc.). |
+| `2` | Blocking policy violations (decisions `block`). |
+
+Every command supports `--json` for machine-readable output and `--output
+<file>` to persist that output to disk (parent directories are created on
+demand). When a command fails (exit `1`), the `--json` error payload carries:
+
+```json
+{
+  "command": "check",
+  "ok": false,
+  "error": "compiled lockfile not found at .claude/policy.lock.json; run `cldc compile` before `cldc check`",
+  "error_type": "FileNotFoundError"
+}
+```
+
+`error_type` is the Python exception class name (e.g. `LockfileError`,
+`GitError`, `EvidenceError`, `RepoBoundaryError`, `FileNotFoundError`) so
+downstream tooling can route on the failure mode without regex-parsing the
+message.
+
+Three JSON artifacts are versioned contracts and carry both `$schema` and a
+string `format_version`:
+
+| Artifact | `$schema` | `format_version` |
+| --- | --- | --- |
+| Policy lockfile | `https://cldc.dev/schemas/policy-lock/v1` | `1` |
+| Check report | `https://cldc.dev/schemas/policy-report/v1` | `1` |
+| Fix plan | `https://cldc.dev/schemas/policy-fix-plan/v1` | `1` |
+
+Mismatched versions are rejected outright instead of being interpreted on a
+best-effort basis. Re-run `cldc compile` after upgrading the package.
+
+Global flags on the top-level `cldc` command:
+
+- `--verbose`, `-v`: emit debug-level diagnostics to stderr and print the full
+  traceback on errors. Use this when filing bugs.
+- `--quiet`, `-q`: suppress warnings, leaving only errors.
+- `--version`: print the package version.
+
 ## End-to-end test against a real repo
 
 The repo ships an opt-in e2e test suite that demonstrates the full
@@ -206,26 +310,12 @@ make e2e
 uv run pytest -m e2e -v
 ```
 
-The suite is excluded from the default `pytest` run via the `e2e`
-marker, so it never slows down regular CI. It requires `git` on `PATH`
-and network access; both are checked at collection time and produce a
-clean `pytest.skip` if missing.
+The suite is excluded from the default `pytest` run via the `e2e` marker, so
+it never slows down regular CI. It requires `git` on `PATH` and network
+access; both are checked at collection time and produce a clean `pytest.skip`
+if missing.
 
-Exit codes:
-
-- `0`: clean or non-blocking result (decisions `pass` or `warn`)
-- `1`: runtime or input error (malformed repo, bad evidence payload, git failure, etc.)
-- `2`: blocking policy violations (decisions `block`)
-
-Every command supports `--json`, and every command can also persist its output with `--output <file>`. When a command fails (exit 1), the `--json` error payload carries `error_type` (the exception class, e.g. `LockfileError`, `GitError`, `FileNotFoundError`) so machine consumers can route on the failure mode without regex-parsing the message.
-
-Global flags on the top-level `cldc` command:
-
-- `--verbose`, `-v`: emit debug-level diagnostics to stderr and print the full traceback on errors. Use this when filing bugs.
-- `--quiet`, `-q`: suppress warnings, leaving only errors.
-- `--version`: print the package version.
-
-## How Policy Is Authored
+## How policy is authored
 
 Sources are discovered from the repo root or any nested path inside the repo. Merge order is deterministic:
 
@@ -264,7 +354,7 @@ rules:
     message: Update tests when source changes.
 ```
 
-## Preset Policy Packs
+## Preset policy packs
 
 `cldc` ships with opinionated rule packs you can merge into your repo policy via `extends:` in `.claude-compiler.yaml`.
 
@@ -293,15 +383,16 @@ extends:
 
 Preset rules merge alongside your own rules. Duplicate rule IDs fail the compile, so pick unique IDs for your own rules.
 
-## Rule Model
+## Rule model
 
-| Kind | Meaning |
-| --- | --- |
-| `deny_write` | Paths matching `paths` must not be written. |
-| `require_read` | Writing `paths` requires a prior read matching `before_paths`. |
-| `require_command` | Writing `when_paths` requires at least one listed command to run. |
-| `couple_change` | Writing `paths` requires a companion write matching `when_paths`. |
-| `require_claim` | Writing `when_paths` requires at least one listed policy `claims` to be asserted. |
+| Kind | Required fields | Meaning |
+| --- | --- | --- |
+| `deny_write` | `paths` | Paths matching `paths` must not be written. |
+| `require_read` | `paths`, `before_paths` | Writing `paths` requires a prior read matching `before_paths`. |
+| `require_command` | `commands`, `when_paths` | Writing `when_paths` requires at least one listed command to run. |
+| `forbid_command` | `commands` (optional `when_paths`) | The listed commands must not run; scoped to `when_paths` when provided, otherwise repo-wide. |
+| `couple_change` | `paths`, `when_paths` | Writing `paths` requires a companion write matching `when_paths`. |
+| `require_claim` | `claims`, `when_paths` | Writing `when_paths` requires at least one listed claim to be asserted. |
 
 Example `require_claim` rule — block edits to `src/**` until a reviewer asserts `qa-reviewed`:
 
@@ -322,7 +413,7 @@ rules:
 | `block` | Report the result and exit `2`. |
 | `fix` | Report the result as blocking and include remediation guidance. |
 
-## Evidence Inputs
+## Evidence inputs
 
 Runtime commands accept evidence three ways:
 
@@ -364,15 +455,79 @@ cldc explain . --report-file artifacts/policy-report.json --format markdown --ou
 cldc fix . --report-file artifacts/policy-report.json --json --output artifacts/policy-fix-plan.json
 ```
 
+## Library API
+
+`cldc` is a typed Python library as well as a CLI. The package ships a
+`py.typed` marker so downstream type checkers pick up the inline annotations,
+and every public type lives under a stable import path:
+
+```python
+from cldc import __version__
+from cldc.compiler.policy_compiler import compile_repo_policy, doctor_repo_policy
+from cldc.runtime.evaluator import check_repo_policy, CheckReport, Violation
+from cldc.runtime.events import load_execution_inputs, ExecutionInputs
+from cldc.runtime.git import collect_git_write_paths
+from cldc.runtime.remediation import build_fix_plan, render_fix_plan
+from cldc.runtime.reporting import load_check_report, render_check_report
+from cldc.runtime.hooks import generate_hook, install_hook
+from cldc.scaffold import initialize_repo_policy
+from cldc.errors import (
+    CldcError,           # base class, inherits from ValueError
+    LockfileError,
+    EvidenceError,
+    ReportError,
+    PolicySourceError,
+    PresetError,
+    PresetNotFoundError,
+    RuleValidationError,
+    RepoBoundaryError,
+    GitError,
+)
+```
+
+A minimal end-to-end run from a Python script:
+
+```python
+from pathlib import Path
+
+from cldc.compiler.policy_compiler import compile_repo_policy
+from cldc.runtime.evaluator import check_repo_policy
+
+repo = Path(".")
+compile_repo_policy(repo)
+
+report = check_repo_policy(
+    repo,
+    write_paths=["src/main.py"],
+    commands=["pytest -q"],
+    claims=["ci-green"],
+)
+
+if report.decision == "block":
+    for violation in report.violations:
+        print(f"[{violation.mode}] {violation.rule_id}: {violation.message}")
+    raise SystemExit(2)
+```
+
+See [`docs/library-usage.md`](./docs/library-usage.md) for the full library
+reference, including every public dataclass, the JSON shapes that
+`to_dict()` produces, and worked examples for each rule kind.
+
 ## Architecture
 
 `cldc` has a pure-core / thin-shell shape:
 
-- `src/cldc/ingest/`: discover the repo root and load canonical policy sources.
-- `src/cldc/parser/`: validate and normalize rule documents.
-- `src/cldc/compiler/`: build `.claude/policy.lock.json` and doctor the repo state.
-- `src/cldc/runtime/`: evaluate evidence, render reports, build fix plans, and integrate with git.
-- `src/cldc/cli/`: expose the commands and exit-code behavior.
+- `src/cldc/ingest/` — discover the repo root and load canonical policy sources.
+- `src/cldc/parser/` — validate and normalize rule documents.
+- `src/cldc/compiler/` — build `.claude/policy.lock.json` and doctor the repo state.
+- `src/cldc/runtime/` — evaluate evidence, render reports, build fix plans, and integrate with git.
+- `src/cldc/presets/` — bundled opinionated policy packs and the loader API.
+- `src/cldc/scaffold.py` — `cldc init` onboarding scaffolder.
+- `src/cldc/cli/` — thin argparse shell that exposes the commands and exit codes.
+- `src/cldc/tui/` — Textual-based interactive policy explorer.
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full data flow, invariants,
+schema contracts, and extension points.
 
 ## Development
 
@@ -380,7 +535,15 @@ cldc fix . --report-file artifacts/policy-report.json --json --output artifacts/
 git clone https://github.com/AbdelStark/claude-md-compiler
 cd claude-md-compiler
 uv sync --locked
+
+# Run the full local quality gate (lint + format-check + types + tests + build + smoke)
+make all
+
+# Or step by step
 uv run pytest -q
+uv run ruff check src tests
+uv run ruff format --check src tests
+uv run pyright src
 uv build
 ```
 
@@ -393,15 +556,35 @@ uv run cldc check tests/fixtures/repo_a --write src/main.py --json
 uv run cldc ci tests/fixtures/repo_a --base HEAD --head HEAD --json
 uv run cldc explain tests/fixtures/repo_a --write src/main.py --format markdown
 uv run cldc fix tests/fixtures/repo_a --write src/main.py --json
+uv run cldc tui tests/fixtures/repo_a
 ```
 
-The repository does not require runtime environment variables.
+The repository does not require runtime environment variables. See
+[`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full contributor workflow.
 
-## Learn More
+## Project status
+
+`cldc` is published on PyPI as
+[`claude-md-compiler`](https://pypi.org/project/claude-md-compiler/) and is
+currently in alpha. The contracts that downstream tooling cares about — the
+lockfile, the check report, and the fix plan — are versioned with `$schema`
+and `format_version` fields, and a major-version bump is required to break
+their shape. The CLI surface (`init`, `compile`, `doctor`, `check`, `ci`,
+`explain`, `fix`, `preset`, `hook`, `tui`) is stable and covered by 260+
+tests including Hypothesis property tests, an opt-in end-to-end suite that
+runs against a real upstream repository (`langchain-ai/langchain`), and a
+post-build smoke test against the freshly built wheel. The library reaches
+**92 % combined branch + statement coverage** under `pytest --cov`.
+
+## Learn more
 
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — layered design, data flow, schema contracts, and extension points
+- [docs/library-usage.md](./docs/library-usage.md) — library reference and worked examples
+- [docs/rfcs/](./docs/rfcs/) — frozen specification documents for the JSON contracts
+- [CONTRIBUTING.md](./CONTRIBUTING.md) — contributor workflow and quality gates
 - [CHANGELOG.md](./CHANGELOG.md) — release history in Keep a Changelog format
+- [SECURITY.md](./SECURITY.md) — supported versions and how to report a vulnerability
 
 ## License
 
-MIT. See [LICENSE](./LICENSE).
+[MIT](./LICENSE) © `claude-md-compiler` contributors.
