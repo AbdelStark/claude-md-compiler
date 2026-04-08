@@ -25,6 +25,14 @@ from cldc import __version__
 from cldc._logging import configure_cli_logging
 from cldc.compiler.policy_compiler import compile_repo_policy, doctor_repo_policy
 from cldc.presets import list_presets, load_preset, preset_path
+from cldc.runtime.claude_code_adapter import (
+    record_claude_claim,
+    run_post_tool_use,
+    run_pre_tool_use,
+    run_session_end,
+    run_session_start,
+    run_stop,
+)
 from cldc.runtime.evaluator import check_repo_policy
 from cldc.runtime.events import EMPTY_EXECUTION_INPUTS, load_execution_inputs_file, load_execution_inputs_text
 from cldc.runtime.git import collect_git_write_paths
@@ -255,10 +263,11 @@ def build_parser() -> argparse.ArgumentParser:
         "hook",
         help="Generate or install hook scripts that wire `cldc` into git or Claude Code",
         description=(
-            "Emit hook artifacts that automatically run `cldc ci`/`cldc check` at the "
-            "moments work is finished. `generate` prints a hook to stdout for review or "
+            "Emit hook artifacts and session-adapter helpers that wire `cldc` into git "
+            "or Claude Code. `generate` prints a hook to stdout for review or "
             "redirection; `install` writes a supported hook into the repo (currently "
-            "only `git-pre-commit`)."
+            "only `git-pre-commit`); `claim` appends an explicit claim to the active "
+            "Claude Code session."
         ),
     )
     hook_subparsers = hook_parser.add_subparsers(dest="hook_command", required=True)
@@ -299,6 +308,41 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_json_flag(hook_install_parser)
     _add_output_flag(hook_install_parser)
+
+    hook_claim_parser = hook_subparsers.add_parser(
+        "claim",
+        help="Append an explicit claim to the active Claude Code session",
+        description=(
+            "Append an explicit claim (for example `ci-green`) to the active "
+            "Claude Code hook session for this repo. Use --session to target a "
+            "specific session id instead of the active one."
+        ),
+    )
+    hook_claim_parser.add_argument("repo", nargs="?", default=".", help="Target repo root (must be the same repo Claude is using)")
+    hook_claim_parser.add_argument("claim", help="Claim string to append to the current Claude Code session")
+    hook_claim_parser.add_argument("--session", dest="hook_session", help="Specific Claude Code session id to append the claim to")
+    _add_json_flag(hook_claim_parser)
+    _add_output_flag(hook_claim_parser)
+
+    hook_runtime_parser = hook_subparsers.add_parser(
+        "runtime",
+        help=argparse.SUPPRESS,
+        description=argparse.SUPPRESS,
+    )
+    hook_runtime_subparsers = hook_runtime_parser.add_subparsers(dest="hook_runtime_action", required=True)
+    for action in (
+        "claude-session-start",
+        "claude-pre-tool-use",
+        "claude-post-tool-use",
+        "claude-stop",
+        "claude-session-end",
+    ):
+        runtime_action_parser = hook_runtime_subparsers.add_parser(
+            action,
+            help=argparse.SUPPRESS,
+            description=argparse.SUPPRESS,
+        )
+        runtime_action_parser.add_argument("repo", help=argparse.SUPPRESS)
 
     tui_parser = subparsers.add_parser(
         "tui",
@@ -556,6 +600,20 @@ def _render_hook_install(report, json_output: bool) -> str:
     return "\n".join(lines)
 
 
+def _render_hook_claim(report, json_output: bool) -> str:
+    if json_output:
+        return json.dumps(report.to_dict(), indent=2, sort_keys=True)
+    lines = [
+        f"Recorded claim: {report.claim}",
+        f"Repo root: {report.repo_root}",
+        f"Session id: {report.session_id}",
+        f"Claim count: {report.claim_count}",
+        f"State file: {report.state_path}",
+        f"Latest report: {report.report_path}",
+    ]
+    return "\n".join(lines)
+
+
 def _load_fix_payload(args) -> dict[str, object]:
     if getattr(args, "report_file", None) and getattr(args, "stdin_report", False):
         raise ValueError("`cldc fix` accepts only one saved report source: choose --report-file or --stdin-report")
@@ -672,6 +730,34 @@ def main(argv: list[str] | None = None) -> int:
                 report = install_hook(args.kind, Path(args.repo), force=args.hook_force)
                 _output_text(_render_hook_install(report, args.json_output), args.output_path)
                 return 0
+            if args.hook_command == "claim":
+                report = record_claude_claim(
+                    Path(args.repo),
+                    args.claim,
+                    session_id=args.hook_session,
+                )
+                _output_text(_render_hook_claim(report, args.json_output), args.output_path)
+                return 0
+            if args.hook_command == "runtime":
+                payload_text = sys.stdin.read()
+                if args.hook_runtime_action == "claude-session-start":
+                    result = run_session_start(Path(args.repo), payload_text)
+                elif args.hook_runtime_action == "claude-pre-tool-use":
+                    result = run_pre_tool_use(Path(args.repo), payload_text)
+                elif args.hook_runtime_action == "claude-post-tool-use":
+                    result = run_post_tool_use(Path(args.repo), payload_text)
+                elif args.hook_runtime_action == "claude-stop":
+                    result = run_stop(Path(args.repo), payload_text)
+                elif args.hook_runtime_action == "claude-session-end":
+                    result = run_session_end(Path(args.repo), payload_text)
+                else:
+                    parser.error(f"unknown hook runtime action: {args.hook_runtime_action}")
+
+                if result.stdout:
+                    print(result.stdout)
+                if result.stderr:
+                    print(result.stderr, file=sys.stderr)
+                return result.exit_code
             # argparse enforces required=True; unreachable from the CLI but
             # kept as a guard for programmatic callers.
             parser.error(f"unknown hook subcommand: {args.hook_command}")

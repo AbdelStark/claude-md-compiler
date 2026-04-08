@@ -2,7 +2,7 @@
 
 # claude-md-compiler
 
-**Compile `CLAUDE.md` into a versioned policy lockfile and enforce it against file edits, commands, and git diffs.**
+**Compile structured Claude Code workflow policy into versioned artifacts and enforce it against runtime evidence, hooks, and git diffs.**
 
 [![PyPI](https://img.shields.io/pypi/v/claude-md-compiler.svg?logo=pypi&logoColor=white)](https://pypi.org/project/claude-md-compiler/)
 [![Python](https://img.shields.io/pypi/pyversions/claude-md-compiler.svg?logo=python&logoColor=white)](https://pypi.org/project/claude-md-compiler/)
@@ -17,22 +17,37 @@
 
 ## What it does
 
-`cldc` is a Python CLI **and** a typed library that compiles repository policy
-from `CLAUDE.md`, `.claude-compiler.yaml`, and `policies/*.yml` into a
-versioned lockfile, then checks file edits, commands, and git diffs against
-that policy. It is purpose-built for agentic coding harnesses (Claude Code,
-Cursor, Aider, etc.) that need a deterministic, offline, exit-coded judge
-sitting between the model and the working tree.
+`cldc` is a Python CLI **and** a typed library that compiles **structured**
+repository policy from `CLAUDE.md` fenced `cldc` code blocks,
+`.claude-compiler.yaml`, and `policies/*.yml` into a versioned lockfile, then
+checks reads, writes, commands, claims, and git diffs against that policy.
+It is purpose-built for **Claude Code** workflows that need a deterministic,
+offline, exit-coded judge sitting between Claude and the working tree.
 
 ## In plain English
 
-When you use an agentic coding tool (Claude Code, Cursor, Aider, etc.), the agent reads `CLAUDE.md` for "house rules": which folders are off-limits, which docs to consult before editing, which commands must run before a change is considered done. That file is **prose**. The agent decides, on each turn, whether to honor it. There is no enforcement, no audit trail, and no way for CI to check the same rules later.
+Anthropic's own Claude Code docs make the boundary clear:
+
+> Claude treats them as context, not enforced configuration.
+
+Source: [How Claude remembers your project](https://code.claude.com/docs/en/memory#claude-md-vs-auto-memory)
+
+That is the gap `cldc` is built to close for Claude-specific workflows.
+`CLAUDE.md` is excellent for guidance, memory, and project conventions; it is
+not a deterministic policy engine. Native Claude permissions are excellent for
+tool/path allow-deny decisions; they are not a versioned workflow-policy
+artifact with CI-readable reports and remediation plans.
 
 `cldc` closes that gap with three ideas borrowed from compiler and policy engineering.
 
-### 1. Compile prose into a contract
+### 1. Compile explicit policy into a contract
 
-A compiler turns ambiguous source (human text, high-level code) into a precise artifact (machine code, IR). `cldc` does the same to your agent rules: it reads `CLAUDE.md`, fenced ` ```cldc ` blocks, `.claude-compiler.yaml`, and `policies/*.yml`, validates them against a strict schema, and writes `.claude/policy.lock.json` — a deterministic, sorted, versioned lockfile. From that moment, "the policy" is a hash, not a paragraph. Two machines compiling the same sources produce byte-identical lockfiles. Drift becomes detectable.
+A compiler turns structured source into a precise artifact. `cldc` does that for
+Claude Code workflow policy: it reads fenced `cldc` code blocks inside
+`CLAUDE.md`, `.claude-compiler.yaml`, bundled presets, and `policies/*.yml`,
+validates them against a strict schema, and writes `.claude/policy.lock.json`
+plus deterministic reports. From that moment, "the policy" is a reviewed
+artifact, not a best-effort memory of repo prose.
 
 ### 2. Separate policy, evidence, and decision
 
@@ -71,12 +86,35 @@ A lockfile is the smallest unit of trust that survives time and travel:
 - **Reviewable**: it diffs cleanly in a PR — policy changes are visible, not buried in a cache.
 - **Refusable**: `cldc check` rejects a stale or schema-drifted lockfile instead of silently re-deriving one. If your `CLAUDE.md` moved and the lockfile didn't, the next check fails until you recompile. That refusal *is* the feature.
 
+### Where `cldc` is strongest
+
+`cldc` is strongest when it acts as a **workflow policy engine**, not as a
+replacement for Claude's native permissions. Its highest-value rules are the
+ones that native allow/deny settings do not express well:
+
+- `require_read`: read required context before editing sensitive paths
+- `require_command`: run validation commands before a change is considered done
+- `couple_change`: require companion edits such as source + tests
+- `require_claim`: require an explicit sign-off or CI claim before finishing
+
+Those rules pair with the project's strongest artifacts:
+
+- a versioned **policy lockfile**
+- a deterministic **check report** for hooks and CI
+- a deterministic **fix plan** for remediation tooling
+
+The core abstraction is deliberate: **policy / evidence / decision**. Claude
+Code produces evidence. `cldc` judges it. CI can reproduce the same decision later.
+
 ### What `cldc` deliberately does *not* do
 
 - It does not call any LLM. There is no model in the runtime path.
 - It does not auto-edit your repo. `fix` produces a plan; humans or the agent execute it.
 - It does not invent rule kinds. Unsupported rules are a hard error, never a silent pass.
 - It does not phone home. Every check is local, offline, and deterministic.
+- It does not replace Claude's native permissions, managed settings, or sandbox.
+  Use those for tool/path authorization. Use `cldc` for repo workflow invariants
+  and deterministic policy artifacts.
 
 ## Why it exists
 
@@ -104,6 +142,7 @@ same way every time.
 - [Exit codes and JSON contracts](#exit-codes-and-json-contracts)
 - [End-to-end test against a real repo](#end-to-end-test-against-a-real-repo)
 - [How policy is authored](#how-policy-is-authored)
+- [Potential next feature: semantic extraction](#potential-next-feature-semantic-extraction)
 - [Preset policy packs](#preset-policy-packs)
 - [Rule model](#rule-model)
 - [Evidence inputs](#evidence-inputs)
@@ -179,7 +218,7 @@ cldc hook generate claude-code > .claude/settings.json
 | `cldc explain` | Render a saved report (or fresh evidence) as text or Markdown. |
 | `cldc fix` | Build a deterministic remediation plan from a saved report or fresh evidence. |
 | `cldc preset list` / `show` | Browse the bundled preset policy packs. |
-| `cldc hook generate` / `install` | Emit or install a git pre-commit hook or a Claude Code settings snippet. |
+| `cldc hook generate` / `install` / `claim` | Emit hook artifacts, install the git pre-commit hook, or append an explicit claim to the active Claude Code session. |
 | `cldc tui` | Launch the interactive Textual-based policy explorer. |
 
 ## Interactive TUI
@@ -208,9 +247,11 @@ behavior you see on screen is the behavior a `cldc check` in CI would produce.
 
 ## Automatic enforcement hooks
 
-`cldc hook` generates and installs hook scripts that run policy
-enforcement at the moments work is finished, so you do not have to
-remember to invoke `cldc check` or `cldc ci` by hand.
+`cldc hook` covers two complementary enforcement moments:
+
+- **Git hooks** for commit-time gating with `cldc ci --staged`.
+- **Claude Code lifecycle hooks** for session-time evidence capture and
+  completion gating.
 
 ```bash
 # Print a portable POSIX git pre-commit script that runs `cldc ci --staged`
@@ -222,10 +263,16 @@ cldc hook install git-pre-commit .
 # Refuse to clobber an existing hook unless --force is passed
 cldc hook install git-pre-commit . --force
 
-# Print a .claude/settings.json snippet that wires `cldc check` into the
-# Claude Code agent harness as a PostToolUse hook on Edit|Write|MultiEdit
+# Print a .claude/settings.json snippet that wires the full Claude Code
+# hook lifecycle into cldc's session adapter
 cldc hook generate claude-code
 cldc hook generate claude-code --json
+
+# Append an explicit claim to the active Claude Code session
+cldc hook claim . ci-green
+
+# Or target a specific Claude Code session id explicitly
+cldc hook claim . qa-reviewed --session abc123
 ```
 
 The git pre-commit script is self-contained and skips gracefully (with
@@ -233,9 +280,40 @@ a warning) if `cldc` is not on `PATH`, so checking out the hook on a
 machine without `cldc` installed will not break commits. Use
 `git commit --no-verify` to bypass it for a single commit.
 
-The Claude Code snippet is generate-only by design — it is meant to be
-copied or merged into an existing `.claude/settings.json` rather than
-written blindly over a settings file the user may already have customized.
+The Claude Code snippet is generate-only by design. It is meant to be copied
+or merged into an existing `.claude/settings.json`, not written blindly over
+operator-managed settings.
+
+The generated Claude Code settings wire the lifecycle this way:
+
+1. `SessionStart` initializes machine-local session state for the repo.
+2. `PreToolUse` blocks true write preconditions before the edit happens:
+   blocking `deny_write` and blocking `require_read`.
+3. `PostToolUse` records successful `Read`, `Edit`, `Write`, `MultiEdit`, and
+   `Bash` evidence, then emits concise workflow feedback without interrupting
+   normal tool flow.
+4. `Stop` evaluates the full accumulated session state and returns a blocking
+   payload while blocking workflow invariants remain unmet, including
+   `couple_change`, `require_command`, and `require_claim`.
+5. `SessionEnd` deletes the mutable session state while leaving the latest
+   saved report on disk for later inspection.
+
+By default, the adapter stores machine-local state under
+`~/.claude/cldc/projects/<repo-hash>/...`. Set `CLDC_CLAUDE_STATE_DIR` to
+override that root. Claims stay explicit because Claude Code does not emit a
+native claim event; use `cldc hook claim` when a human, harness, or CI system
+needs to append one.
+
+### Near-term Claude adapter roadmap
+
+- Keep `PreToolUse` focused on true preconditions and reserve final workflow
+  completion gating for `Stop`.
+- Capture richer tool metadata as Claude Code hook payloads evolve, especially
+  command outcomes and more precise multi-path edits.
+- Make the saved per-session report easier to hand off into `cldc explain` and
+  `cldc fix` flows.
+- Improve claim plumbing so external CI and review systems can append explicit
+  claims with less manual wiring.
 
 ## Exit codes and JSON contracts
 
@@ -292,8 +370,8 @@ The repo ships an opt-in e2e test suite that demonstrates the full
 compile → check → fix flow against a real upstream repo. By default it
 clones [langchain-ai/langchain](https://github.com/langchain-ai/langchain),
 drops a hand-authored `.claude-compiler.yaml` (under
-`tests/e2e/compiler.yaml`) that translates langchain's CLAUDE.md prose
-into enforceable rules, and walks through:
+`tests/e2e/compiler.yaml`) alongside the repo's existing `CLAUDE.md`
+context, defines explicit structured rules, and walks through:
 
 - a **red phase**: edits that should violate specific rules and the
   decision is `block` with a non-zero exit code,
@@ -317,10 +395,21 @@ if missing.
 
 ## How policy is authored
 
-Sources are discovered from the repo root or any nested path inside the repo. Merge order is deterministic:
+Policy authoring in a Claude Code repo has two layers:
 
-1. `CLAUDE.md`
-2. inline fenced ```` ```cldc ```` blocks inside `CLAUDE.md`
+- **Claude context**: free-form prose in `CLAUDE.md` that Claude reads at
+  session start.
+- **Enforced policy**: explicit fenced `cldc` code blocks,
+  `.claude-compiler.yaml`, bundled presets, and `policies/*.yml`.
+
+Today only the explicit structured layer becomes enforceable rules. `cldc`
+does **not** semantically extract arbitrary `CLAUDE.md` prose into rules yet.
+
+Sources are discovered from the repo root or any nested path inside the repo.
+The authored bundle is tracked in deterministic order:
+
+1. `CLAUDE.md` as the authored context source
+2. inline fenced `cldc` code blocks inside `CLAUDE.md`
 3. `.claude-compiler.yaml` or `.claude-compiler.yml`
 4. bundled presets referenced from `.claude-compiler.yaml` via `extends:`
 5. `policies/*.yml` and `policies/*.yaml`
@@ -353,6 +442,36 @@ rules:
     when_paths: ["tests/**"]
     message: Update tests when source changes.
 ```
+
+Only items 2 through 5 become enforceable rules today. Item 1 remains Claude
+context and human review context, but it is still part of the tracked source
+bundle so lockfile freshness reflects the authored policy surface around those
+rules.
+
+## Potential next feature: semantic extraction
+
+A plausible next feature is **semantic extraction** at authoring time:
+reading free-form `CLAUDE.md` prose and proposing structured rule candidates
+for review.
+
+What that would improve:
+
+- lower the friction of turning prose conventions into enforceable rules
+- surface gaps between "what the repo says" and "what the lockfile enforces"
+- bootstrap `.claude-compiler.yaml` or fenced `cldc` code blocks from
+  existing project instructions
+
+How that would differ from the current architecture:
+
+- **Today**: the compiler only accepts explicit structured policy as input to
+  the deterministic ingest → parse → compile → evaluate pipeline.
+- **With semantic extraction**: an optional authoring-time assist layer would
+  propose or generate explicit rules first, then those reviewed rules would
+  flow through the same deterministic pipeline.
+
+In other words, semantic extraction would help authors produce policy. It
+would not put an LLM into the runtime enforcement path. The runtime judge would
+stay deterministic, offline, and artifact-driven.
 
 ## Preset policy packs
 

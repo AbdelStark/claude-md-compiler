@@ -48,13 +48,27 @@ def test_generate_claude_code_settings_returns_valid_json():
 
     payload = json.loads(artifact.content)
     assert "hooks" in payload
+    assert set(payload["hooks"]) == {"SessionStart", "PreToolUse", "PostToolUse", "Stop", "SessionEnd"}
+
+    pre_tool_use = payload["hooks"]["PreToolUse"]
+    assert isinstance(pre_tool_use, list) and pre_tool_use
+    pre_matcher = pre_tool_use[0]
+    assert "Edit" in pre_matcher["matcher"]
+    pre_nested = pre_matcher["hooks"][0]
+    assert pre_nested["type"] == "command"
+    assert "cldc hook runtime claude-pre-tool-use" in pre_nested["command"]
+
     post_tool_use = payload["hooks"]["PostToolUse"]
     assert isinstance(post_tool_use, list) and post_tool_use
-    matchers = post_tool_use[0]
-    assert "Edit" in matchers["matcher"]
-    nested = matchers["hooks"][0]
-    assert nested["type"] == "command"
-    assert "cldc check" in nested["command"]
+    post_matcher = post_tool_use[0]
+    assert "Read" in post_matcher["matcher"]
+    post_nested = post_matcher["hooks"][0]
+    assert post_nested["type"] == "command"
+    assert "cldc hook runtime claude-post-tool-use" in post_nested["command"]
+
+    stop_hooks = payload["hooks"]["Stop"]
+    assert stop_hooks[0]["hooks"][0]["type"] == "command"
+    assert "cldc hook runtime claude-stop" in stop_hooks[0]["hooks"][0]["command"]
 
 
 def test_generate_hook_dispatches_by_kind():
@@ -163,6 +177,42 @@ def test_cli_hook_generate_claude_code_json(tmp_path):
     assert payload["target_path"] == CLAUDE_SETTINGS_PATH
     inner = json.loads(payload["content"])
     assert "hooks" in inner
+    assert set(inner["hooks"]) == {"SessionStart", "PreToolUse", "PostToolUse", "Stop", "SessionEnd"}
+
+
+def test_cli_hook_claim_appends_explicit_claim(tmp_path):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    state_root = tmp_path / "claude-state"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "cldc.cli.main",
+            "hook",
+            "claim",
+            str(repo_root),
+            "ci-green",
+            "--session",
+            "session-123",
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**PYTHONPATH_ENV, "CLDC_CLAUDE_STATE_DIR": str(state_root)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["claim"] == "ci-green"
+    assert payload["claim_count"] == 1
+    assert payload["session_id"] == "session-123"
+    state_path = Path(payload["state_path"])
+    assert state_path.exists()
+    state_payload = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state_payload["claims"] == ["ci-green"]
 
 
 def test_cli_hook_install_writes_pre_commit_hook(tmp_path):

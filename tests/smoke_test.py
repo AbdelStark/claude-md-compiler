@@ -30,7 +30,9 @@ def main() -> int:
     git_hook = _run("cldc", "hook", "generate", "git-pre-commit")
     assert "cldc ci" in git_hook, "git pre-commit hook should invoke `cldc ci`"
     claude_hook = _run("cldc", "hook", "generate", "claude-code")
+    assert "SessionStart" in claude_hook, "claude-code hook snippet should declare a SessionStart hook"
     assert "PostToolUse" in claude_hook, "claude-code hook snippet should declare a PostToolUse hook"
+    assert "Stop" in claude_hook, "claude-code hook snippet should declare a Stop hook"
 
     return 0
 

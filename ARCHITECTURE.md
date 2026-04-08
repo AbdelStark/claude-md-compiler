@@ -1,11 +1,12 @@
 # Architecture
 
-`cldc` compiles repository policy from `CLAUDE.md`, `.claude-compiler.yaml`,
-`policies/*.yml`, and bundled preset packs into a versioned lockfile, then
-enforces that lockfile against runtime evidence (reads, writes, commands,
-claims) and git-derived diffs with explainable, deterministic decisions. The
-codebase is structured as a pure-core / thin-shell pipeline so each layer can
-be tested in isolation and re-used by other tools.
+`cldc` compiles structured Claude Code workflow policy from `CLAUDE.md` fenced
+`cldc` code blocks, `.claude-compiler.yaml`, `policies/*.yml`, and bundled
+preset packs into a versioned lockfile, then enforces that lockfile against
+runtime evidence (reads, writes, commands, claims) and git-derived diffs with
+explainable, deterministic decisions. The codebase is structured as a
+pure-core / thin-shell pipeline so each layer can be tested in isolation and
+re-used by other tools.
 
 ## Layered design
 
@@ -14,7 +15,7 @@ be tested in isolation and re-used by other tools.
 | Ingest | `src/cldc/ingest/` | Find the repo root and load canonical policy sources. |
 | Parser | `src/cldc/parser/` | Validate and normalize rule documents. |
 | Compiler | `src/cldc/compiler/` | Produce the versioned lockfile artifact. |
-| Runtime | `src/cldc/runtime/` | Evaluate evidence, render reports, build fix plans, integrate with git. |
+| Runtime | `src/cldc/runtime/` | Evaluate evidence, render reports, build fix plans, integrate with git, and adapt Claude Code hooks into session evidence. |
 | CLI | `src/cldc/cli/` | Thin argparse shell that delegates to the layers above. |
 | TUI | `src/cldc/tui/` | Textual-based interactive explorer that delegates to the same library calls. |
 
@@ -39,7 +40,10 @@ Primary modules per layer:
   `render_check_report`), `src/cldc/runtime/remediation.py` (`build_fix_plan`,
   `render_fix_plan`, `FIX_PLAN_SCHEMA`), `src/cldc/runtime/git.py`
   (`collect_git_write_paths`), `src/cldc/runtime/report_schema.py`
-  (`CHECK_REPORT_SCHEMA`, `CHECK_REPORT_FORMAT_VERSION`).
+  (`CHECK_REPORT_SCHEMA`, `CHECK_REPORT_FORMAT_VERSION`), and
+  `src/cldc/runtime/claude_code_adapter.py`
+  (`run_session_start`, `run_pre_tool_use`, `run_post_tool_use`, `run_stop`,
+  `run_session_end`, `record_claude_claim`).
 - Presets: `src/cldc/presets/loader.py` (`list_presets`, `load_preset`,
   `preset_path`, `PresetNotFoundError`, `PRESET_SOURCE_KIND`).
 - CLI: `src/cldc/cli/main.py` (argparse subparsers for `init`, `compile`,
@@ -103,6 +107,45 @@ For CI flows, `collect_git_write_paths` in `src/cldc/runtime/git.py` sources
 the write set from staged changes or a `--base`/`--head` diff before evidence
 is handed to `check_repo_policy`.
 
+`CLAUDE.md` participates in discovery and source digesting, but only explicit
+structured policy sources become enforceable rules today: fenced `cldc` code
+blocks, `.claude-compiler.yaml`, presets, and policy YAML files.
+
+## Claude Code hook lifecycle
+
+The Claude-specific hook adapter lives in
+`src/cldc/runtime/claude_code_adapter.py`. It keeps machine-local session state
+outside the repo, then reuses the same runtime evaluator used by `cldc check`.
+
+```
+Claude Code SessionStart
+        |
+        v
+run_session_start  --->  ~/.claude/cldc/projects/<repo-hash>/sessions/<session>.json
+        |
+        +--> PreToolUse  ---> run_pre_tool_use   ---> block true write preconditions
+        |
+        +--> PostToolUse ---> run_post_tool_use  ---> append reads/writes/commands + save latest report
+        |
+        +--> cldc hook claim / record_claude_claim ---> append explicit claims
+        |
+        +--> Stop        ---> run_stop           ---> emit block payload while blocking invariants remain
+        |
+        +--> SessionEnd  ---> run_session_end    ---> delete mutable session state
+```
+
+Design intent:
+
+- `PreToolUse` is reserved for true preconditions that must block before a
+  write occurs, currently blocking `deny_write` and blocking `require_read`.
+- `PostToolUse` records successful evidence and surfaces concise workflow
+  feedback without stopping the tool flow.
+- `Stop` is the completion gate for session-level invariants such as
+  `couple_change`, `require_command`, and `require_claim`.
+- Claims remain explicit because Claude Code does not emit a native claim
+  event; a human, harness, or CI system appends them through `cldc hook claim`
+  or `record_claude_claim(...)`.
+
 ## Schema contracts
 
 Three JSON artifacts are versioned contracts. Each carries a `$schema` URI and
@@ -157,6 +200,12 @@ Order matters for two reasons:
 The `preset` slot is reserved for bundled packs pulled in via `extends:` in
 `.claude-compiler.yaml`. Its source kind constant lives in
 `src/cldc/presets/loader.py` as `PRESET_SOURCE_KIND`.
+
+The `claude_md` source kind is intentionally broader than "enforceable rules":
+it records the surrounding authored context file in the source bundle. Only
+`inline_block`, `compiler_config`, `preset`, and `policy_file` currently
+produce parsed rules. This keeps lockfile freshness tied to the authored policy
+surface without claiming that arbitrary prose is semantically compiled today.
 
 ## Invariants
 

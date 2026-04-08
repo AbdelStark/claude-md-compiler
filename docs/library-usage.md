@@ -115,6 +115,17 @@ from cldc.runtime.report_schema import (
     CHECK_REPORT_FORMAT_VERSION,
     CHECK_REPORT_SCHEMA,
 )
+from cldc.runtime.claude_code_adapter import (
+    ClaudeCodeClaimReport,
+    ClaudeCodeSessionState,
+    HookRuntimeResult,
+    record_claude_claim,
+    run_post_tool_use,
+    run_pre_tool_use,
+    run_session_end,
+    run_session_start,
+    run_stop,
+)
 
 # Hooks and onboarding
 from cldc.runtime.hooks import (
@@ -500,9 +511,34 @@ report.executable   # True
 ```
 
 `generate_hook("claude-code")` returns a `.claude/settings.json` snippet that
-wires `cldc check` into the Claude Code agent harness as a `PostToolUse` hook
-on `Edit|Write|MultiEdit`. It is intentionally generate-only; merging it with
-an existing settings file is the operator's job.
+wires Claude Code's lifecycle hooks into `cldc`'s stateful session adapter:
+
+- `SessionStart` initializes machine-local state for the repo/session.
+- `PreToolUse` blocks true write preconditions such as blocking
+  `deny_write` and `require_read`.
+- `PostToolUse` records successful `Read`, `Edit`, `Write`, `MultiEdit`, and
+  `Bash` evidence and persists the latest report.
+- `Stop` evaluates the full accumulated session and can emit a blocking
+  payload while workflow invariants remain unmet.
+- `SessionEnd` deletes mutable session state but leaves the latest saved
+  report on disk.
+
+The adapter persists state under `~/.claude/cldc/projects/<repo-hash>/...` by
+default. Set `CLDC_CLAUDE_STATE_DIR` to override that root during tests or
+custom harness runs. Claims are explicit because Claude Code has no native
+claim tool event:
+
+```python
+from cldc.runtime.claude_code_adapter import record_claude_claim
+
+claim_report = record_claude_claim("./my-repo", "ci-green", session_id="session-123")
+print(claim_report.claim_count)
+```
+
+The runtime helpers are also available directly for embedders that want to
+drive the lifecycle themselves instead of shelling out through `cldc hook
+runtime`. The generated settings snippet is still intentionally generate-only;
+merging it into an existing settings file is the operator's job.
 
 ## Typed exceptions
 

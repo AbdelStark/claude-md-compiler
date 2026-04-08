@@ -6,9 +6,11 @@ agent finishes work. It emits two complementary hook artifacts:
 
 * a portable POSIX `git pre-commit` script that runs `cldc ci --staged`
   before every commit and blocks the commit on policy violations, and
-* a `.claude/settings.json` snippet that wires `cldc check` into the
-  Claude Code agent harness as a `PostToolUse` hook so file edits are
-  evaluated against compiled policy as the agent works.
+* a `.claude/settings.json` snippet that wires `cldc` into Claude Code's
+  hook lifecycle with a session-state adapter: `PreToolUse` blocks true
+  preconditions before writes, `PostToolUse` records evidence and reports
+  workflow drift, and `Stop` blocks completion while blocking invariants
+  remain unmet.
 
 Generators are pure functions that return string content; the installer
 functions are the only entry points that touch the filesystem, and they
@@ -103,17 +105,58 @@ exec cldc ci "$repo_root" --staged
 
 _CLAUDE_SETTINGS_HOOK_TEMPLATE = {
     "hooks": {
-        "PostToolUse": [
+        "SessionStart": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": ('cldc hook runtime claude-session-start "$CLAUDE_PROJECT_DIR"'),
+                    }
+                ],
+            }
+        ],
+        "PreToolUse": [
             {
                 "matcher": "Edit|Write|MultiEdit",
                 "hooks": [
                     {
                         "type": "command",
-                        "command": ('cldc check "$CLAUDE_PROJECT_DIR" --write "$CLAUDE_TOOL_FILE_PATH" --json'),
+                        "command": ('cldc hook runtime claude-pre-tool-use "$CLAUDE_PROJECT_DIR"'),
                     }
                 ],
             }
-        ]
+        ],
+        "PostToolUse": [
+            {
+                "matcher": "Read|Edit|Write|MultiEdit|Bash",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": ('cldc hook runtime claude-post-tool-use "$CLAUDE_PROJECT_DIR"'),
+                    }
+                ],
+            }
+        ],
+        "Stop": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": ('cldc hook runtime claude-stop "$CLAUDE_PROJECT_DIR"'),
+                    }
+                ],
+            }
+        ],
+        "SessionEnd": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": ('cldc hook runtime claude-session-end "$CLAUDE_PROJECT_DIR"'),
+                    }
+                ],
+            }
+        ],
     }
 }
 
@@ -129,7 +172,7 @@ def generate_git_pre_commit() -> HookArtifact:
 
 
 def generate_claude_code_settings() -> HookArtifact:
-    """Return a `.claude/settings.json` snippet that wires `cldc check`.
+    """Return a `.claude/settings.json` snippet that wires the Claude adapter.
 
     The content is a self-contained JSON document; users can copy it
     verbatim into a fresh `.claude/settings.json`, or merge the `hooks`
