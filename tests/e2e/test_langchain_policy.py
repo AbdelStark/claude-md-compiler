@@ -289,6 +289,7 @@ def test_doctor_reports_langchain_repo_as_healthy_after_compile(
     assert doctor.discovered is True
     assert doctor.lockfile_exists is True
     assert doctor.errors == []
+    assert doctor.warnings == []
     assert doctor.rule_count >= 5
     # Default mode comes from our `.claude-compiler.yaml`.
     assert doctor.default_mode == "warn"

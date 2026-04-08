@@ -179,3 +179,16 @@ def test_doctor_reports_malformed_lockfile_json(tmp_path):
 
     assert any("not valid JSON" in error for error in report.errors)
     assert report.next_action == "Fix the reported policy or lockfile errors, then rerun `cldc doctor` and `cldc compile`."
+
+
+def test_doctor_omits_missing_policy_fragment_warning_when_rules_exist(tmp_path):
+    (tmp_path / "CLAUDE.md").write_text(
+        "```cldc\nrules:\n  - id: deny\n    kind: deny_write\n    paths: ['generated/**']\n    message: stop\n```\n"
+    )
+    compile_repo_policy(tmp_path)
+
+    report = doctor_repo_policy(tmp_path)
+
+    assert report.errors == []
+    assert "no policy fragments discovered under policies/*.yml or policies/*.yaml" not in report.warnings
+    assert report.next_action is None

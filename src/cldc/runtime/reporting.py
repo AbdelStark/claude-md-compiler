@@ -199,6 +199,15 @@ def _provenance(violation: dict[str, Any]) -> str:
     return "unknown"
 
 
+def _required_paths_label(violation: dict[str, Any]) -> str:
+    kind = violation["kind"]
+    if kind == "couple_change":
+        return "Required coupled paths"
+    if kind == "require_read":
+        return "Required reads"
+    return "Required paths"
+
+
 def render_check_report(payload: dict[str, Any], *, format: str = "text") -> str:
     """Render a validated policy report as text or Markdown."""
 
@@ -255,7 +264,7 @@ def _render_text(report: dict[str, Any]) -> str:
         if violation["matched_claims"]:
             lines.append(f"   Matched claims: {_join(violation['matched_claims'])}")
         if violation["required_paths"]:
-            lines.append(f"   Required reads: {_join(violation['required_paths'])}")
+            lines.append(f"   {_required_paths_label(violation)}: {_join(violation['required_paths'])}")
         if violation["required_commands"]:
             lines.append(f"   Required commands: {_join(violation['required_commands'])}")
         if violation["required_claims"]:
@@ -316,7 +325,7 @@ def _render_markdown(report: dict[str, Any]) -> str:
         if violation["matched_claims"]:
             lines.append(f"- **Matched claims:** `{_join(violation['matched_claims'])}`")
         if violation["required_paths"]:
-            lines.append(f"- **Required reads:** `{_join(violation['required_paths'])}`")
+            lines.append(f"- **{_required_paths_label(violation)}:** `{_join(violation['required_paths'])}`")
         if violation["required_commands"]:
             lines.append(f"- **Required commands:** `{_join(violation['required_commands'])}`")
         if violation["required_claims"]:

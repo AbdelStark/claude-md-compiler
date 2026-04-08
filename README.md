@@ -482,6 +482,13 @@ A plausible next feature is **semantic extraction** at authoring time:
 reading free-form `CLAUDE.md` prose and proposing structured rule candidates
 for review.
 
+That authoring-time phase could be powered by an LLM or agent:
+
+- reading prose instructions and inferring candidate `cldc` rules
+- showing the mapping from prose statements to proposed rule definitions
+- asking a maintainer to accept, edit, or reject those candidates before they
+  become part of the repo's structured policy
+
 What that would improve:
 
 - lower the friction of turning prose conventions into enforceable rules
@@ -493,13 +500,15 @@ How that would differ from the current architecture:
 
 - **Today**: the compiler only accepts explicit structured policy as input to
   the deterministic ingest → parse → compile → evaluate pipeline.
-- **With semantic extraction**: an optional authoring-time assist layer would
-  propose or generate explicit rules first, then those reviewed rules would
-  flow through the same deterministic pipeline.
+- **With semantic extraction**: an optional LLM- or agent-assisted
+  authoring layer would propose or generate explicit rules first, then those
+  reviewed rules would flow through the same deterministic pipeline.
 
 In other words, semantic extraction would help authors produce policy. It
 would not put an LLM into the runtime enforcement path. The runtime judge would
-stay deterministic, offline, and artifact-driven.
+stay deterministic, offline, and artifact-driven. The model would only help
+with authoring candidate rules; `compile`, `check`, `doctor`, and `fix` would
+still operate on explicit reviewed artifacts.
 
 ## Preset policy packs
 

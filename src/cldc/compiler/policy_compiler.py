@@ -30,6 +30,7 @@ logger = get_logger(__name__)
 
 LOCKFILE_FORMAT_VERSION = "1"
 LOCKFILE_SCHEMA = "https://cldc.dev/schemas/policy-lock/v1"
+NO_POLICY_FRAGMENTS_WARNING = "no policy fragments discovered under policies/*.yml or policies/*.yaml"
 
 
 @dataclass(frozen=True)
@@ -231,6 +232,12 @@ def _recommend_next_action(errors: list[str], warnings: list[str]) -> str | None
     return None
 
 
+def _normalize_doctor_warnings(discovery_warnings: list[str], *, rule_count: int) -> list[str]:
+    if rule_count <= 0:
+        return list(discovery_warnings)
+    return [warning for warning in discovery_warnings if warning != NO_POLICY_FRAGMENTS_WARNING]
+
+
 def doctor_repo_policy(repo_root: Path | str) -> DoctorReport:
     """Inspect policy discovery, parsing health, and lockfile freshness."""
 
@@ -247,7 +254,6 @@ def doctor_repo_policy(repo_root: Path | str) -> DoctorReport:
         # propagate so they surface in tests and bug reports.
         return _empty_doctor_report(repo_root, [str(exc)])
 
-    warnings.extend(bundle.discovery.warnings)
     root = Path(bundle.repo_root)
     lockfile = root / ".claude" / "policy.lock.json"
     lockfile_schema: str | None = None
@@ -277,6 +283,8 @@ def doctor_repo_policy(repo_root: Path | str) -> DoctorReport:
                 errors=errors,
                 warnings=warnings,
             )
+
+    warnings.extend(_normalize_doctor_warnings(bundle.discovery.warnings, rule_count=rule_count))
 
     if not bundle.sources:
         warnings.append("no sources were loaded")

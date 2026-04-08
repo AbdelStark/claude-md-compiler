@@ -250,9 +250,25 @@ class TestRenderCheckReport:
         assert "Matched paths: generated/foo.py" in out
         assert "Matched commands: pytest" in out
         assert "Matched claims: reviewed" in out
-        assert "Required reads: docs/CHANGELOG.md" in out
+        assert "Required paths: docs/CHANGELOG.md" in out
         assert "Required commands: lint" in out
         assert "Required claims: security-reviewed" in out
+
+    def test_text_render_labels_coupled_paths_for_couple_change(self):
+        payload = _payload(
+            violations=[
+                _violation(
+                    kind="couple_change",
+                    rule_id="keep-tests-in-sync",
+                    message="update tests with source changes",
+                    explanation="source changes require a companion tests change",
+                    required_paths=["tests/**"],
+                )
+            ]
+        )
+
+        out = render_check_report(payload, format="text")
+        assert "Required coupled paths: tests/**" in out
 
     def test_text_render_staged_git_branch_and_no_violations(self):
         payload = _payload(
@@ -291,6 +307,22 @@ class TestRenderCheckReport:
         assert "- **Matched paths:** `generated/foo.py`" in out
         assert "- **Matched commands:** `pytest`" in out
         assert "- **Required claims:** `security-reviewed`" in out
+
+    def test_markdown_render_labels_coupled_paths_for_couple_change(self):
+        payload = _payload(
+            violations=[
+                _violation(
+                    kind="couple_change",
+                    rule_id="keep-tests-in-sync",
+                    message="update tests with source changes",
+                    explanation="source changes require a companion tests change",
+                    required_paths=["tests/**"],
+                )
+            ]
+        )
+
+        out = render_check_report(payload, format="markdown")
+        assert "- **Required coupled paths:** `tests/**`" in out
 
     def test_markdown_render_staged_git_and_no_violations(self):
         payload = _payload(
