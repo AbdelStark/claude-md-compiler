@@ -15,10 +15,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Lean
+      - name: Install elan (Lean toolchain manager)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y lean
+          curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf \
+            | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Install Lean toolchain (pinned via proofs/lean-toolchain)
+        working-directory: proofs
+        run: elan toolchain install "$(cat lean-toolchain)" --no-self-update
 
       - name: Validate proofs
         run: |
