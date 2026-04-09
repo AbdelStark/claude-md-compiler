@@ -1,0 +1,26 @@
+name: Validate Lean Proofs
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate-proofs:
+    name: Validate Lean Proofs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Lean
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lean
+
+      - name: Validate proofs
+        run: |
+          chmod +x scripts/validate_proofs.sh
+          ./scripts/validate_proofs.sh
