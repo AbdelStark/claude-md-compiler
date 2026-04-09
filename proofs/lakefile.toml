@@ -1,0 +1,12 @@
+name = "cldc-proofs"
+defaultTargets = ["CldcProofs"]
+
+[[lean_lib]]
+name = "CldcProofs"
+roots = [
+  "policy_compiler",
+  "runtime_evaluator",
+  "rule_parser",
+  "git_integration",
+  "hook_generation",
+]

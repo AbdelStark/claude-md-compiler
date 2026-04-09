@@ -1,85 +1,91 @@
--- Formal verification for git.py using LeanStral
+-- Formal verification of the git integration pipeline.
+-- Models the state machine for cldc's staged-diff and base/head diff
+-- collection and proves correctness of the sequential git stages.
 
-import LeanStral
-
--- Define the state and transitions for git integration
-inductive GitState : Type
+/-- The states in the git integration pipeline -/
+inductive GitState where
   | Initial
   | CommandConstructed
   | CommandExecuted
   | PathsCollected
   | Completed
+  deriving DecidableEq, Repr
 
--- Define the actions in the git integration process
-definition constructCommand : GitState → GitState
+open GitState
+
+/-- Construct the git diff command (staged or base/head). -/
+def constructCommand : GitState → GitState
   | Initial => CommandConstructed
-  | _ => Initial
+  | s       => s
 
-definition executeCommand : GitState → GitState
+/-- Execute the git command and capture its output. -/
+def executeCommand : GitState → GitState
   | CommandConstructed => CommandExecuted
-  | _ => CommandConstructed
+  | s                  => s
 
-definition collectPaths : GitState → GitState
+/-- Parse the diff output and collect affected file paths. -/
+def collectPaths : GitState → GitState
   | CommandExecuted => PathsCollected
-  | _ => CommandExecuted
+  | s               => s
 
-definition completeCollection : GitState → GitState
+/-- Mark the collection pipeline as complete. -/
+def completeCollection : GitState → GitState
   | PathsCollected => Completed
-  | _ => PathsCollected
+  | s              => s
 
--- Define the properties to verify
-definition reachesCompleted : GitState → Prop
+/-- Predicate: the pipeline has reached the terminal Completed state. -/
+def reachesCompleted : GitState → Prop
   | Completed => True
-  | _ => False
+  | _         => False
 
--- Theorem: Git integration reaches the completed state
-theorem git_integration_completes : 
-  reachesCompleted (completeCollection (collectPaths (executeCommand (constructCommand Initial)))) := by
+-- ── Core correctness theorems ─────────────────────────────────────────────
+
+/-- The full git integration pipeline starting from Initial reaches Completed. -/
+theorem git_integration_completes :
+    reachesCompleted
+      (completeCollection (collectPaths (executeCommand (constructCommand Initial)))) := by
   simp [constructCommand, executeCommand, collectPaths, completeCollection, reachesCompleted]
 
--- Theorem: Each step transitions correctly
-theorem correct_transitions : 
-  constructCommand Initial = CommandConstructed ∧
-  executeCommand CommandConstructed = CommandExecuted ∧
-  collectPaths CommandExecuted = PathsCollected ∧
-  completeCollection PathsCollected = Completed := by
+/-- Each stage transitions correctly from its expected predecessor state. -/
+theorem correct_transitions :
+    constructCommand Initial         = CommandConstructed ∧
+    executeCommand CommandConstructed = CommandExecuted  ∧
+    collectPaths CommandExecuted      = PathsCollected   ∧
+    completeCollection PathsCollected = Completed := by
   simp [constructCommand, executeCommand, collectPaths, completeCollection]
 
--- Verify the git integration process is deterministic
-theorem deterministic_git_integration : 
-  ∀ s1 s2, constructCommand s1 = constructCommand s2 ∧ executeCommand s1 = executeCommand s2 ∧ collectPaths s1 = collectPaths s2 ∧ completeCollection s1 = completeCollection s2 := by
-  intros s1 s2
-  simp [constructCommand, executeCommand, collectPaths, completeCollection]
+-- ── Pipeline ordering theorems ────────────────────────────────────────────
 
--- Verify git command construction is correct
-theorem correct_command_construction : 
-  ∀ staged base head, 
-  (staged = true ∧ base = none ∧ head = none) ∨ 
-  (staged = false ∧ base ≠ none ∧ head ≠ none) := by
-  intros staged base head
-  simp [staged, base, head]
-  cases staged <;> simp_all
-  cases base <;> simp_all
-  cases head <;> simp_all
+/-- reachesCompleted holds exactly when the state is Completed. -/
+theorem completed_iff (s : GitState) :
+    reachesCompleted s ↔ s = Completed := by
+  cases s <;> simp [reachesCompleted]
 
--- Verify path normalization is consistent
-theorem consistent_path_normalization : 
-  ∀ paths, 
-  length (collect_git_write_paths paths) = length paths := by
-  intros paths
-  simp [collect_git_write_paths]
+/-- Paths cannot be collected before the command is executed. -/
+theorem collect_requires_execution :
+    collectPaths Initial = Initial := by
+  simp [collectPaths]
 
--- Verify the git command execution is deterministic
-theorem deterministic_command_execution : 
-  ∀ command cwd, 
-  _run_git command cwd = _run_git command cwd := by
-  intros command cwd
-  simp [_run_git]
+/-- Command cannot be executed before it is constructed. -/
+theorem execute_requires_construction :
+    executeCommand Initial = Initial := by
+  simp [executeCommand]
 
--- Verify the write paths collection is accurate
-theorem accurate_write_paths_collection : 
-  ∀ result, 
-  length result.write_paths = Nat.succ (length (List.tail result.write_paths)) := by
-  intros result
-  simp [List.length]
-  induction result.write_paths <;> simp_all
+/-- constructCommand is idempotent once past Initial. -/
+theorem constructCommand_idempotent (s : GitState) (h : s ≠ Initial) :
+    constructCommand (constructCommand s) = constructCommand s := by
+  cases s <;> simp_all [constructCommand]
+
+-- ── Path collection helpers ───────────────────────────────────────────────
+
+/-- Filtering a path list cannot produce more paths than the original. -/
+theorem filter_le_original {α : Type} (p : α → Bool) (paths : List α) :
+    (paths.filter p).length ≤ paths.length :=
+  List.length_filter_le p paths
+
+/-- A non-empty path list has positive length. -/
+theorem nonempty_paths_positive {α : Type} (paths : List α) (h : paths ≠ []) :
+    0 < paths.length := by
+  match paths with
+  | []      => exact absurd rfl h
+  | _ :: _ => exact Nat.succ_pos _

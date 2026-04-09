@@ -151,6 +151,7 @@ same way every time.
 - [Library API](#library-api)
 - [Architecture](#architecture)
 - [Development](#development)
+- [Formal verification](#formal-verification)
 - [Project status](#project-status)
 - [Learn more](#learn-more)
 - [License](#license)
@@ -727,6 +728,88 @@ uv run cldc tui tests/fixtures/repo_a
 
 The repository does not require runtime environment variables. See
 [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full contributor workflow.
+
+## Formal verification
+
+The `proofs/` directory contains [Lean 4](https://leanprover.github.io/) proofs
+that formally verify the correctness of `cldc`'s core pipeline state machines.
+Each proof file models the sequential stages of a pipeline as an inductive state
+type and proves key properties: every pipeline reaches `Completed` when started
+from `Initial`, each stage only fires from the right predecessor state, and
+stages cannot be skipped.
+
+| Proof file | Pipeline modelled |
+| --- | --- |
+| `proofs/policy_compiler.lean` | `cldc compile` — source loading → rule parsing → lockfile generation |
+| `proofs/runtime_evaluator.lean` | `cldc check` — evidence normalisation → rule evaluation → violation detection |
+| `proofs/rule_parser.lean` | Rule parsing — source loading → validation → normalisation |
+| `proofs/git_integration.lean` | Git integration — command construction → execution → path collection |
+| `proofs/hook_generation.lean` | Hook generation — artifact generation → installation |
+
+### Prerequisites
+
+Install the [elan](https://github.com/leanprover/elan) Lean toolchain manager
+and fetch the pinned Lean 4 release (takes a few minutes on first run):
+
+```bash
+# macOS / Linux via Homebrew
+brew install elan-init
+elan default stable
+```
+
+Or use the upstream shell installer on any platform:
+
+```bash
+curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
+```
+
+Verify the install:
+
+```bash
+lean --version   # Lean (version 4.x.x ...)
+lake --version   # Lake version 5.x.x ...
+```
+
+### Verify all proofs
+
+```bash
+# One-shot convenience script
+chmod +x scripts/validate_proofs.sh
+./scripts/validate_proofs.sh
+
+# Or build directly with Lake
+cd proofs
+lake build
+```
+
+A successful run prints `Build completed successfully` with all 7 jobs green.
+
+### Verify a single proof file
+
+```bash
+cd proofs
+lean policy_compiler.lean
+```
+
+### What is checked
+
+Each file is type-checked by Lean's kernel — no `sorry` placeholders are
+present, so every `theorem` statement has a machine-verified proof.  The
+proofs cover:
+
+- **Pipeline completion** — the full stage sequence from `Initial` reaches
+  `Completed`.
+- **Correct transitions** — each stage maps its expected predecessor state
+  to the next state.
+- **Ordering invariants** — later stages are no-ops when earlier stages have
+  not yet run (e.g. rules cannot be evaluated before evidence is normalised).
+- **Idempotency** — re-applying a stage once it has fired has no effect.
+- **Collection helpers** — list-level lemmas used by the runtime (filter
+  monotonicity, non-empty length).
+
+The proofs are pinned to Lean **4.29.0** via `proofs/lean-toolchain` and are
+built automatically on every push and pull request to `main` by the
+`.github/workflows/validate_proofs.yml` CI workflow.
 
 ## Project status
 

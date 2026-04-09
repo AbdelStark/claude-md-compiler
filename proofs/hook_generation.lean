@@ -1,79 +1,89 @@
--- Formal verification for hooks.py using LeanStral
+-- Formal verification of the hook generation pipeline.
+-- Models the state machine for cldc's hook artifact generation and
+-- installation and proves correctness of the sequential hook stages.
 
-import LeanStral
-
--- Define the state and transitions for hook generation
-inductive HookState : Type
+/-- The states in the hook generation pipeline -/
+inductive HookState where
   | Initial
   | ArtifactGenerated
   | ArtifactInstalled
   | Completed
+  deriving DecidableEq, Repr
 
--- Define the actions in the hook generation process
-definition generateArtifact : HookState → HookState
-  | Initial => ArtifactGenerated
-  | _ => Initial
+open HookState
 
-definition installArtifact : HookState → HookState
+/-- Generate the hook artifact (script content + target path). -/
+def generateArtifact : HookState → HookState
+  | Initial           => ArtifactGenerated
+  | s                 => s
+
+/-- Write the artifact to its installation target. -/
+def installArtifact : HookState → HookState
   | ArtifactGenerated => ArtifactInstalled
-  | _ => ArtifactGenerated
+  | s                 => s
 
-definition completeGeneration : HookState → HookState
+/-- Mark the hook generation pipeline as complete. -/
+def completeGeneration : HookState → HookState
   | ArtifactInstalled => Completed
-  | _ => ArtifactInstalled
+  | s                 => s
 
--- Define the properties to verify
-definition reachesCompleted : HookState → Prop
+/-- Predicate: the pipeline has reached the terminal Completed state. -/
+def reachesCompleted : HookState → Prop
   | Completed => True
-  | _ => False
+  | _         => False
 
--- Theorem: Hook generation reaches the completed state
-theorem hook_generation_completes : 
-  reachesCompleted (completeGeneration (installArtifact (generateArtifact Initial))) := by
+-- ── Core correctness theorems ─────────────────────────────────────────────
+
+/-- The full hook generation pipeline starting from Initial reaches Completed. -/
+theorem hook_generation_completes :
+    reachesCompleted (completeGeneration (installArtifact (generateArtifact Initial))) := by
   simp [generateArtifact, installArtifact, completeGeneration, reachesCompleted]
 
--- Theorem: Each step transitions correctly
-theorem correct_transitions : 
-  generateArtifact Initial = ArtifactGenerated ∧
-  installArtifact ArtifactGenerated = ArtifactInstalled ∧
-  completeGeneration ArtifactInstalled = Completed := by
+/-- Each stage transitions correctly from its expected predecessor state. -/
+theorem correct_transitions :
+    generateArtifact Initial          = ArtifactGenerated ∧
+    installArtifact ArtifactGenerated = ArtifactInstalled ∧
+    completeGeneration ArtifactInstalled = Completed := by
   simp [generateArtifact, installArtifact, completeGeneration]
 
--- Verify the hook generation process is deterministic
-theorem deterministic_hook_generation : 
-  ∀ s1 s2, generateArtifact s1 = generateArtifact s2 ∧ installArtifact s1 = installArtifact s2 ∧ completeGeneration s1 = completeGeneration s2 := by
-  intros s1 s2
-  simp [generateArtifact, installArtifact, completeGeneration]
+-- ── Pipeline ordering theorems ────────────────────────────────────────────
 
--- Verify hook content is deterministic
-theorem deterministic_hook_content : 
-  ∀ kind, 
-  generate_hook kind = generate_hook kind := by
-  intros kind
-  simp [generate_hook]
+/-- reachesCompleted holds exactly when the state is Completed. -/
+theorem completed_iff (s : HookState) :
+    reachesCompleted s ↔ s = Completed := by
+  cases s <;> simp [reachesCompleted]
 
--- Verify installation is idempotent
-theorem idempotent_installation : 
-  ∀ kind repo_root force, 
-  install_hook kind repo_root force = install_hook kind repo_root force := by
-  intros kind repo_root force
-  simp [install_hook]
+/-- Artifact cannot be installed before it is generated. -/
+theorem install_requires_generation :
+    installArtifact Initial = Initial := by
+  simp [installArtifact]
 
--- Verify the git pre-commit hook is correct
-theorem correct_git_pre_commit : 
-  ∀, 
-  generate_git_pre_commit () = HookArtifact.mk "git-pre-commit" ".git/hooks/pre-commit" true _GIT_PRE_COMMIT_TEMPLATE := by
-  simp [generate_git_pre_commit]
+/-- Generation cannot be completed before artifact is installed. -/
+theorem complete_requires_install :
+    completeGeneration Initial = Initial := by
+  simp [completeGeneration]
 
--- Verify the Claude Code settings hook is correct
-theorem correct_claude_code_settings : 
-  ∀, 
-  generate_claude_code_settings () = HookArtifact.mk "claude-code" ".claude/settings.json" false _CLAUDE_SETTINGS_HOOK_TEMPLATE := by
-  simp [generate_claude_code_settings]
+/-- generateArtifact is idempotent once past Initial. -/
+theorem generateArtifact_idempotent (s : HookState) (h : s ≠ Initial) :
+    generateArtifact (generateArtifact s) = generateArtifact s := by
+  cases s <;> simp_all [generateArtifact]
 
--- Verify the hook installation is accurate
-theorem accurate_hook_installation : 
-  ∀ kind repo_root force, 
-  install_hook kind repo_root force = HookInstallReport.mk kind repo_root ".git/hooks/pre-commit" "created" true "Stage a change and run `git commit` to verify the hook fires; use `git commit --no-verify` to bypass it for a single commit." := by
-  intros kind repo_root force
-  simp [install_hook]
+-- ── Hook kind enumeration ─────────────────────────────────────────────────
+
+/-- The supported hook kinds -/
+inductive HookKind where
+  | GitPreCommit
+  | ClaudeCode
+  deriving DecidableEq, Repr
+
+/-- Every hook kind is either GitPreCommit or ClaudeCode (exhaustive). -/
+theorem hook_kinds_exhaustive (k : HookKind) :
+    k = HookKind.GitPreCommit ∨ k = HookKind.ClaudeCode := by
+  cases k
+  · exact Or.inl rfl
+  · exact Or.inr rfl
+
+/-- There are exactly two distinct hook kinds. -/
+theorem exactly_two_hook_kinds :
+    HookKind.GitPreCommit ≠ HookKind.ClaudeCode := by
+  decide

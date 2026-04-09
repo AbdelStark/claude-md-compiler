@@ -1,85 +1,86 @@
--- Formal verification for runtime_evaluator.py using LeanStral
+-- Formal verification of the runtime evaluation pipeline.
+-- Models the state machine for cldc's check/ci commands and proves
+-- correctness properties of the evidence-evaluation stages.
 
-import LeanStral
-
--- Define the state and transitions for runtime evaluation
-inductive EvaluationState : Type
+/-- The states in the runtime evaluation pipeline -/
+inductive EvaluationState where
   | Initial
   | EvidenceNormalized
   | RulesEvaluated
   | ViolationsDetected
   | Completed
+  deriving DecidableEq, Repr
 
--- Define the actions in the evaluation process
-definition normalizeEvidence : EvaluationState → EvaluationState
+open EvaluationState
+
+/-- Normalize incoming evidence (paths, claims, git writes) to canonical form. -/
+def normalizeEvidence : EvaluationState → EvaluationState
   | Initial => EvidenceNormalized
-  | _ => Initial
+  | s       => s
 
-definition evaluateRules : EvaluationState → EvaluationState
+/-- Evaluate each policy rule against the normalized evidence set. -/
+def evaluateRules : EvaluationState → EvaluationState
   | EvidenceNormalized => RulesEvaluated
-  | _ => EvidenceNormalized
+  | s                  => s
 
-definition detectViolations : EvaluationState → EvaluationState
+/-- Collect and classify violations from rule evaluation results. -/
+def detectViolations : EvaluationState → EvaluationState
   | RulesEvaluated => ViolationsDetected
-  | _ => RulesEvaluated
+  | s              => s
 
-definition completeEvaluation : EvaluationState → EvaluationState
+/-- Finalize the evaluation and produce a policy decision. -/
+def completeEvaluation : EvaluationState → EvaluationState
   | ViolationsDetected => Completed
-  | _ => ViolationsDetected
+  | s                  => s
 
--- Define the properties to verify
-definition reachesCompleted : EvaluationState → Prop
+/-- Predicate: the evaluator has reached the terminal Completed state. -/
+def reachesCompleted : EvaluationState → Prop
   | Completed => True
-  | _ => False
+  | _         => False
 
--- Theorem: Evaluation reaches the completed state
-theorem evaluation_completes : 
-  reachesCompleted (completeEvaluation (detectViolations (evaluateRules (normalizeEvidence Initial)))) := by
+-- ── Core correctness theorems ─────────────────────────────────────────────
+
+/-- The full evaluation pipeline starting from Initial reaches Completed. -/
+theorem evaluation_completes :
+    reachesCompleted
+      (completeEvaluation (detectViolations (evaluateRules (normalizeEvidence Initial)))) := by
   simp [normalizeEvidence, evaluateRules, detectViolations, completeEvaluation, reachesCompleted]
 
--- Theorem: Each step transitions correctly
-theorem correct_transitions : 
-  normalizeEvidence Initial = EvidenceNormalized ∧
-  evaluateRules EvidenceNormalized = RulesEvaluated ∧
-  detectViolations RulesEvaluated = ViolationsDetected ∧
-  completeEvaluation ViolationsDetected = Completed := by
+/-- Each stage transitions correctly from its expected predecessor state. -/
+theorem correct_transitions :
+    normalizeEvidence Initial       = EvidenceNormalized ∧
+    evaluateRules EvidenceNormalized = RulesEvaluated    ∧
+    detectViolations RulesEvaluated  = ViolationsDetected ∧
+    completeEvaluation ViolationsDetected = Completed := by
   simp [normalizeEvidence, evaluateRules, detectViolations, completeEvaluation]
 
--- Verify the evaluation process is deterministic
-theorem deterministic_evaluation : 
-  ∀ s1 s2, normalizeEvidence s1 = normalizeEvidence s2 ∧ evaluateRules s1 = evaluateRules s2 ∧ detectViolations s1 = detectViolations s2 ∧ completeEvaluation s1 = completeEvaluation s2 := by
-  intros s1 s2
-  simp [normalizeEvidence, evaluateRules, detectViolations, completeEvaluation]
+-- ── Pipeline ordering theorems ────────────────────────────────────────────
 
--- Verify path normalization is repo-boundary-safe
-theorem safe_path_normalization : 
-  ∀ path repo_root, 
-  _normalize_paths [path] repo_root = [path] ∨ _normalize_paths [path] repo_root = [] := by
-  intros path repo_root
-  simp [_normalize_paths]
+/-- reachesCompleted holds exactly when the state is Completed. -/
+theorem completed_iff (s : EvaluationState) :
+    reachesCompleted s ↔ s = Completed := by
+  cases s <;> simp [reachesCompleted]
 
--- Verify rule evaluation is exhaustive
-theorem exhaustive_rule_evaluation : 
-  ∀ rules evidence, 
-  length (_evaluate_rule rules evidence) = length rules := by
-  intros rules evidence
-  simp [_evaluate_rule]
+/-- Rules cannot be evaluated before evidence is normalized. -/
+theorem eval_requires_normalization :
+    evaluateRules Initial = Initial := by
+  simp [evaluateRules]
 
--- Verify violation detection is accurate
-theorem accurate_violation_detection : 
-  ∀ violations, 
-  length violations = Nat.succ (length (List.tail violations)) := by
-  intros violations
-  simp [List.length]
-  induction violations <;> simp_all
+/-- Violations cannot be detected before rules are evaluated. -/
+theorem detect_requires_eval :
+    detectViolations Initial = Initial := by
+  simp [detectViolations]
 
--- Verify the decision logic is correct
-theorem correct_decision_logic : 
-  ∀ blocking_violation_count violation_count, 
-  blocking_violation_count > 0 → decision = "block" ∨ 
-  violation_count > 0 → decision = "warn" ∨ 
-  decision = "pass" := by
-  intros blocking_violation_count violation_count h1 h2
-  simp [decision]
-  cases blocking_violation_count <;> simp_all
-  cases violation_count <;> simp_all
+/-- normalizeEvidence is idempotent once past Initial. -/
+theorem normalizeEvidence_idempotent (s : EvaluationState) (h : s ≠ Initial) :
+    normalizeEvidence (normalizeEvidence s) = normalizeEvidence s := by
+  cases s <;> simp_all [normalizeEvidence]
+
+-- ── Collection-size helpers ───────────────────────────────────────────────
+
+/-- A non-empty violation list has positive length. -/
+theorem nonempty_violations_positive {α : Type} (vs : List α) (h : vs ≠ []) :
+    0 < vs.length := by
+  match vs with
+  | []      => exact absurd rfl h
+  | _ :: _ => exact Nat.succ_pos _
