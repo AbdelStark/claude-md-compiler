@@ -23,7 +23,7 @@ jobs:
 
       - name: Install Lean toolchain (pinned via proofs/lean-toolchain)
         working-directory: proofs
-        run: elan toolchain install "$(cat lean-toolchain)" --no-self-update
+        run: elan toolchain install "$(cat lean-toolchain)"
 
       - name: Validate proofs
         run: |
